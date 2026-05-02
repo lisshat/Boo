@@ -7,14 +7,21 @@ import 'package:flutter/material.dart';
 
 
 class PetOwnerShell extends StatefulWidget {
-  const PetOwnerShell({super.key});
+  final int initialIndex;
+  const PetOwnerShell({super.key, this.initialIndex = 0});
 
   @override
   State<PetOwnerShell> createState() => _PetOwnerShellState();
 }
 
 class _PetOwnerShellState extends State<PetOwnerShell> {
-  int _index = 0;
+  late int _index;
+
+  @override
+  void initState() {
+    super.initState();
+    _index = widget.initialIndex;
+  }
 
   final _pages = const [
     HomeDashboardPage(),

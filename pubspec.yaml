@@ -39,7 +39,8 @@ dependencies:
   geolocator: ^14.0.2 
   calendar_viewer: ^1.0.0+3
   syncfusion_flutter_calendar: ^32.2.3
-  supabase_flutter: ^1.0.0
+  http: ^1.2.0
+  flutter_secure_storage: ^9.0.0
   
 dev_dependencies:
   flutter_test:

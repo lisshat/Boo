@@ -1,3 +1,4 @@
+import 'package:boo/screens/pet_owner/book_appointment_screen.dart';
 import 'package:flutter/material.dart';
 import '../../models/provider_models.dart';
 
@@ -106,7 +107,16 @@ class ProviderProfileScreen extends StatelessWidget {
                 child: ServiceCard(
                   icon: _serviceIcon(provider.type),
                   service: s,
-                  onTap: s.enabled ? () {} : null,
+                  onTap: s.enabled
+                      ? () {
+                          Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) => BookAppointmentScreen(
+                              provider: provider,
+                              service: s,
+                            ),
+                          ));
+                        }
+                      : null,
                 ),
               ),
             ),
@@ -150,11 +160,16 @@ class ProviderProfileScreen extends StatelessWidget {
               Expanded(
                 child: ElevatedButton(
                   onPressed: () {
-                    // MVP: navigate to booking request screen later
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                          content: Text("${_ctaLabel(provider.type)} (demo)")),
-                    );
+                    final first = provider.services
+                        .where((s) => s.enabled)
+                        .toList();
+                    if (first.isEmpty) return;
+                    Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => BookAppointmentScreen(
+                        provider: provider,
+                        service: first.first,
+                      ),
+                    ));
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: booOrange,

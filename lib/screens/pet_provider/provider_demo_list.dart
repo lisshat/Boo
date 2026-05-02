@@ -8,7 +8,7 @@ class ProviderDemoList extends StatelessWidget {
   List<ProviderModel> demoProviders() {
     return [
       ProviderModel(
-        id: "p1",
+        id: "1aec8c16-daa0-4b4b-b92d-a250f07724ae",
         name: "Paws & Whiskers Boarding",
         type: ProviderType.boarding,
         imageUrl: "https://picsum.photos/200?random=31",
@@ -22,24 +22,27 @@ class ProviderDemoList extends StatelessWidget {
         isVerified: true,
         services: const [
           ServiceModel(
-            id: "s1",
+            id: "d065406d-111b-4763-80d8-c1b07446b03a",
             title: "Overnight Boarding",
             subtitle: "Per night • Food included",
             priceLabel: "KSh 1,500",
+            price: 1500,
             durationMins: 1440,
           ),
           ServiceModel(
-            id: "s2",
+            id: "53d6d24a-2633-437b-86e5-6bc059fcf726",
             title: "Day Boarding",
             subtitle: "Per day • Pickup optional",
             priceLabel: "KSh 800",
+            price: 800,
             durationMins: 480,
           ),
           ServiceModel(
-            id: "s3",
+            id: "6850c4d3-6a4f-47a7-94af-aff6e1d88a85",
             title: "Medication Add-on",
             subtitle: "Administer meds as instructed",
             priceLabel: "KSh 200",
+            price: 200,
             durationMins: 15,
           ),
         ],
@@ -54,7 +57,7 @@ class ProviderDemoList extends StatelessWidget {
         ],
       ),
       ProviderModel(
-        id: "p2",
+        id: "b6ce914a-245d-4951-9470-fb7df8e642fe",
         name: "Kipepeo Grooming Studio",
         type: ProviderType.groomer,
         imageUrl: "https://picsum.photos/200?random=22",
@@ -68,24 +71,26 @@ class ProviderDemoList extends StatelessWidget {
         isVerified: false,
         services: const [
           ServiceModel(
-            id: "g1",
+            id: "b5f656b6-c9ff-4934-bb17-ea71598d0f8f",
             title: "Full Grooming",
             subtitle: "Bath • trim • ear clean",
             priceLabel: "KSh 1,200",
+            price: 1200,
             durationMins: 90,
           ),
           ServiceModel(
-            id: "g2",
+            id: "1f71149e-79b8-489d-b559-a5e1451a86a6",
             title: "Nail Trim",
             subtitle: "Quick clean trim",
             priceLabel: "KSh 300",
+            price: 300,
             durationMins: 15,
           ),
         ],
         reviews: const [],
       ),
       ProviderModel(
-        id: "p3",
+        id: "0b61ffe2-c262-4b18-ba02-6be7044155f4",
         name: "Nia Pet Sitting",
         type: ProviderType.sitter,
         imageUrl: "https://picsum.photos/200?random=44",
@@ -99,17 +104,19 @@ class ProviderDemoList extends StatelessWidget {
         isVerified: true,
         services: const [
           ServiceModel(
-            id: "ps1",
+            id: "305c58e6-d566-4d1a-87a7-fb5ee2b5754e",
             title: "Drop-in Visit",
             subtitle: "Feed • clean • playtime",
             priceLabel: "KSh 500",
+            price: 500,
             durationMins: 30,
           ),
           ServiceModel(
-            id: "ps2",
+            id: "28914644-3d3f-4a40-86be-880d5d0a54cc",
             title: "House Sitting",
             subtitle: "Overnight presence",
             priceLabel: "KSh 2,000",
+            price: 2000,
             durationMins: 1440,
           ),
         ],

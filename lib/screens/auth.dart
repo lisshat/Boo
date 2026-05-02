@@ -1,7 +1,14 @@
+import 'package:boo/screens/pet_owner/onboarding/owner_onboarding_step1.dart';
+import 'package:boo/screens/pet_owner_shell.dart';
+import 'package:boo/screens/pet_provider/onboarding/provider_onboarding_step1.dart';
+import 'package:boo/screens/pet_provider/provider_shell.dart';
+import 'package:boo/services/auth_service.dart';
 import 'package:flutter/material.dart';
 
 class BooAuthScreen extends StatefulWidget {
-  const BooAuthScreen({super.key});
+  final String role;
+
+  const BooAuthScreen({super.key, this.role = 'owner'});
 
   @override
   State<BooAuthScreen> createState() => _BooAuthScreenState();
@@ -11,6 +18,7 @@ class _BooAuthScreenState extends State<BooAuthScreen> {
   bool isLogin = true;
 
   final _formKey = GlobalKey<FormState>();
+  final _fullNameCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
   bool _obscure = true;
@@ -18,6 +26,7 @@ class _BooAuthScreenState extends State<BooAuthScreen> {
 
   @override
   void dispose() {
+    _fullNameCtrl.dispose();
     _emailCtrl.dispose();
     _passwordCtrl.dispose();
     super.dispose();
@@ -29,19 +38,33 @@ class _BooAuthScreenState extends State<BooAuthScreen> {
 
     setState(() => _loading = true);
 
-    try {
-      // TODO: Hook Supabase here
-      // if (isLogin) { signInWithPassword(...) } else { signUp(...) }
-      await Future.delayed(const Duration(milliseconds: 600));
+    final email = _emailCtrl.text.trim();
+    final password = _passwordCtrl.text;
 
-      if (!mounted) return;
+    final error = isLogin
+        ? await AuthService.instance.login(email, password)
+        : await AuthService.instance.register(
+            email,
+            password,
+            fullName: _fullNameCtrl.text.trim(),
+            role: widget.role,
+          );
+
+    if (!mounted) return;
+    setState(() => _loading = false);
+
+    if (error != null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text(isLogin ? "Logged in (demo)" : "Signed up (demo)")),
+        SnackBar(content: Text(error), backgroundColor: Colors.red),
       );
-    } finally {
-      if (mounted) setState(() => _loading = false);
+      return;
     }
+
+    // Replace the AuthGate so it re-checks the stored token
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => _PostAuthRedirect(isNewUser: !isLogin)),
+      (_) => false,
+    );
   }
 
   @override
@@ -90,7 +113,7 @@ class _BooAuthScreenState extends State<BooAuthScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    "Pet Owner Access",
+                    widget.role == 'provider' ? 'Provider Access' : 'Pet Owner Access',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: const Color(0xFF6B7280),
                         ),
@@ -126,6 +149,20 @@ class _BooAuthScreenState extends State<BooAuthScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
+                              if (!isLogin) ...[
+                                _Label("FULL NAME"),
+                                const SizedBox(height: 6),
+                                _Input(
+                                  controller: _fullNameCtrl,
+                                  hintText: "e.g. Imani Wanjiku",
+                                  keyboardType: TextInputType.name,
+                                  validator: (v) {
+                                    if ((v ?? '').trim().isEmpty) return 'Full name is required';
+                                    return null;
+                                  },
+                                ),
+                                const SizedBox(height: 12),
+                              ],
                               _Label("EMAIL"),
                               const SizedBox(height: 6),
                               _Input(
@@ -262,44 +299,48 @@ class _BooAuthScreenState extends State<BooAuthScreen> {
 
                               const SizedBox(height: 14),
 
-                              // Provider link section
-                              Center(
-                                child: Column(
-                                  children: [
-                                    Text(
-                                      "Looking to offer your services?",
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodySmall
-                                          ?.copyWith(
-                                            color: const Color(0xFF6B7280),
+                              if (widget.role == 'owner')
+                                Center(
+                                  child: Column(
+                                    children: [
+                                      Text(
+                                        "Looking to offer your services?",
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodySmall
+                                            ?.copyWith(
+                                              color: const Color(0xFF6B7280),
+                                            ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      OutlinedButton(
+                                        onPressed: () {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) => const BooAuthScreen(role: 'provider'),
+                                            ),
+                                          );
+                                        },
+                                        style: OutlinedButton.styleFrom(
+                                          foregroundColor: orange,
+                                          side: const BorderSide(color: orange),
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 14, vertical: 10),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(14),
                                           ),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    OutlinedButton(
-                                      onPressed: () {
-                                        // TODO: navigate to ProviderAuthScreen
-                                        // Navigator.pushNamed(context, "/provider-auth");
-                                      },
-                                      style: OutlinedButton.styleFrom(
-                                        foregroundColor: orange,
-                                        side: const BorderSide(color: orange),
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 14, vertical: 10),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(14),
+                                        ),
+                                        child: const Text(
+                                          "Are you a provider? Login here",
+                                          style: TextStyle(
+                                              fontWeight: FontWeight.w700),
                                         ),
                                       ),
-                                      child: const Text(
-                                        "Are you a provider? Login here",
-                                        style: TextStyle(
-                                            fontWeight: FontWeight.w700),
-                                      ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
-                              ),
 
                               const SizedBox(height: 12),
 
@@ -506,6 +547,37 @@ class _SocialButton extends StatelessWidget {
       ),
       icon: Icon(icon, size: 18, color: const Color(0xFF111827)),
       label: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+    );
+  }
+}
+
+/// Routes to the correct shell after a successful login/register,
+/// based on the role stored in secure storage.
+class _PostAuthRedirect extends StatelessWidget {
+  final bool isNewUser;
+
+  const _PostAuthRedirect({this.isNewUser = false});
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<String?>(
+      future: AuthService.instance.getUserRole(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        final role = snapshot.data;
+        if (isNewUser && role == 'owner') {
+          return const OwnerOnboardingStep1();
+        }
+        if (isNewUser && role == 'provider') {
+          return const ProviderOnboardingStep1();
+        }
+        if (role == 'provider') return const ProviderShell();
+        return const PetOwnerShell();
+      },
     );
   }
 }
