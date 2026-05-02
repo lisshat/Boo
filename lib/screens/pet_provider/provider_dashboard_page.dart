@@ -235,7 +235,7 @@ class _QuickActions extends StatelessWidget {
               child: _ActionTile(
                 icon: Icons.person_outline,
                 label: 'Edit Profile',
-                onTap: () => onSwitchTab(2),
+                onTap: () => onSwitchTab(4),
               ),
             ),
           ],
