@@ -26,21 +26,73 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
   DateTime? _selectedDate;
   String? _selectedTime;
   bool _loading = false;
+  bool _isSubmitting = false;
 
-  final List<String> _timeSlots = [
-    '09:00 AM',
-    '09:30 AM',
-    '10:00 AM',
-    '11:00 AM',
-    '01:00 PM',
-    '02:00 PM',
-    '03:00 PM',
-  ];
+  // Availability: dayOfWeek (0=Sun..6=Sat) → AvailabilityDay
+  Map<int, AvailabilityDay> _availability = {};
+  bool _availabilityLoaded = false;
 
   @override
   void initState() {
     super.initState();
     _focusedMonth = DateTime.now();
+    _loadAvailability();
+  }
+
+  Future<void> _loadAvailability() async {
+    final days = await BookingService.instance.getProviderAvailability(widget.provider.id);
+    if (!mounted) return;
+    setState(() {
+      _availability = {for (final d in days) d.dayOfWeek: d};
+      _availabilityLoaded = true;
+    });
+  }
+
+  // Dart weekday: 1=Mon..7=Sun → our scheme: 0=Sun, 1=Mon..6=Sat
+  int _dartWeekdayToOur(int weekday) => weekday % 7;
+
+  // Returns null if available, or a reason string if not
+  String? _dayUnavailableReason(DateTime dt) {
+    if (!_availabilityLoaded) return null;
+    if (_availability.isEmpty) return null; // no schedule set yet — allow booking
+    final dow = _dartWeekdayToOur(dt.weekday);
+    final avail = _availability[dow];
+    if (avail == null || !avail.isAvailable) {
+      const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      return 'Provider is not available on ${dayNames[dow]}s';
+    }
+    return null;
+  }
+
+  List<String> _timeSlotsForDate(DateTime? date) {
+    if (date == null) return [];
+    if (!_availabilityLoaded || _availability.isEmpty) {
+      // Fallback to default slots if no availability is configured
+      return ['09:00 AM', '09:30 AM', '10:00 AM', '11:00 AM', '01:00 PM', '02:00 PM', '03:00 PM'];
+    }
+    final dow = _dartWeekdayToOur(date.weekday);
+    final avail = _availability[dow];
+    if (avail == null || !avail.isAvailable) return [];
+    return _generateSlots(avail.startTime, avail.endTime);
+  }
+
+  List<String> _generateSlots(String startTime, String endTime) {
+    final sp = startTime.split(':');
+    final ep = endTime.split(':');
+    int h = int.parse(sp[0]);
+    int m = int.parse(sp[1]);
+    final endH = int.parse(ep[0]);
+    final endM = int.parse(ep[1]);
+    final slots = <String>[];
+    while (h < endH || (h == endH && m < endM)) {
+      final period = h >= 12 ? 'PM' : 'AM';
+      final displayH = h % 12 == 0 ? 12 : h % 12;
+      final mm = m.toString().padLeft(2, '0');
+      slots.add('$displayH:$mm $period');
+      m += 30;
+      if (m >= 60) { m -= 60; h++; }
+    }
+    return slots;
   }
 
   void _prevMonth() => setState(
@@ -91,22 +143,34 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
       dt.month == _selectedDate!.month &&
       dt.day == _selectedDate!.day;
 
+  bool _isTimePast(String time) {
+    if (_selectedDate == null || !_isToday(_selectedDate!)) return false;
+    final parts = time.trim().split(' ');
+    final hm = parts[0].split(':');
+    int hour = int.parse(hm[0]);
+    final int minute = int.parse(hm[1]);
+    final String period = parts.length > 1 ? parts[1].toUpperCase() : 'AM';
+    if (period == 'PM' && hour != 12) hour += 12;
+    if (period == 'AM' && hour == 12) hour = 0;
+    final now = DateTime.now();
+    return hour < now.hour || (hour == now.hour && minute <= now.minute);
+  }
+
   String _summaryLine() {
     if (_selectedDate == null || _selectedTime == null) return 'Select a date & time';
     return '${_dayName(_selectedDate!)}, ${_selectedDate!.day} ${_shortMonth(_selectedDate!)} · $_selectedTime';
   }
 
   Future<void> _confirmBooking() async {
-    setState(() => _loading = true);
+    if (_isSubmitting) return;
+    setState(() { _loading = true; _isSubmitting = true; });
 
     String? errorMessage;
 
     try {
       await BookingService.instance.createBooking(
         providerId: widget.provider.id,
-        providerName: widget.provider.name,
-        serviceTitle: widget.service.title,
-        servicePrice: widget.service.price,
+        serviceId: widget.service.id,
         date: _selectedDate!,
         time: _selectedTime!,
       );
@@ -115,7 +179,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
     }
 
     if (!mounted) return;
-    setState(() => _loading = false);
+    setState(() { _loading = false; _isSubmitting = false; });
 
     if (errorMessage == null) {
       await BookingConfirmedScreen.show(
@@ -229,7 +293,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                       final selected = _isSelected(dt);
                       final today = _isToday(dt);
                       return GestureDetector(
-                        onTap: past ? null : () => setState(() => _selectedDate = dt),
+                        onTap: past ? null : () => setState(() { _selectedDate = dt; _selectedTime = null; }),
                         child: Container(
                           decoration: BoxDecoration(
                             color: selected
@@ -266,33 +330,69 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
             const Text('Available Time',
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
             const SizedBox(height: 12),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: _timeSlots.map((t) {
-                final sel = _selectedTime == t;
-                return GestureDetector(
-                  onTap: () => setState(() => _selectedTime = t),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 18, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: sel ? orange : Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                          color: sel ? orange : const Color(0xFFE5E7EB)),
-                    ),
-                    child: Text(
-                      t,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: sel ? Colors.white : const Color(0xFF374151),
+            if (_selectedDate != null && _dayUnavailableReason(_selectedDate!) != null)
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFEF3C7),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFFDE68A)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.event_busy_rounded, color: Color(0xFFB45309), size: 18),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        _dayUnavailableReason(_selectedDate!)!,
+                        style: const TextStyle(color: Color(0xFF92400E), fontSize: 13),
                       ),
                     ),
-                  ),
-                );
-              }).toList(),
-            ),
+                  ],
+                ),
+              )
+            else if (_selectedDate == null)
+              const Text(
+                'Select a date to see available times',
+                style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 13),
+              )
+            else
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: _timeSlotsForDate(_selectedDate).map((t) {
+                  final sel = _selectedTime == t;
+                  final past = _isTimePast(t);
+                  return GestureDetector(
+                    onTap: past ? null : () => setState(() => _selectedTime = t),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 18, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: sel ? orange : Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                            color: past
+                                ? const Color(0xFFE5E7EB)
+                                : sel
+                                    ? orange
+                                    : const Color(0xFFE5E7EB)),
+                      ),
+                      child: Text(
+                        t,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: past
+                              ? const Color(0xFFD1D5DB)
+                              : sel
+                                  ? Colors.white
+                                  : const Color(0xFF374151),
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
           ],
         ),
       ),

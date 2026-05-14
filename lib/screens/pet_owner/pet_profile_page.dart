@@ -1,7 +1,10 @@
+import 'package:boo/services/auth_service.dart';
+import 'package:boo/services/cloudinary_upload_service.dart';
 import 'package:flutter/material.dart';
 
 class PetProfilePage extends StatefulWidget {
-  const PetProfilePage({super.key});
+  final Map<String, dynamic> pet;
+  const PetProfilePage({super.key, required this.pet});
 
   @override
   State<PetProfilePage> createState() => _PetProfilePageState();
@@ -11,18 +14,33 @@ class _PetProfilePageState extends State<PetProfilePage> {
   static const orange = Color(0xFFF68B1F);
   static const bg = Color(0xFFF6F7FB);
 
-  final _nameCtrl = TextEditingController(text: 'Charlie');
-  final _breedCtrl = TextEditingController(text: 'Golden Retriever');
-  String _petType = 'Dog';
-  int _ageYears = 3;
+  late final TextEditingController _nameCtrl;
+  late final TextEditingController _breedCtrl;
+  late String _petType;
+  late int _ageYears;
+  String? _photoUrl;
   bool _saving = false;
+  bool _uploadingPhoto = false;
 
-  final _petTypes = ['Dog', 'Cat', 'Bird', 'Rabbit', 'Other'];
+  static const _petTypes = ['Dog', 'Cat', 'Bird', 'Rabbit', 'Other'];
 
-  final _recentHistory = [
-    {'icon': Icons.content_cut, 'label': 'Grooming', 'sub': 'Paws & Whiskers', 'date': 'Feb 12, 2026'},
-    {'icon': Icons.medical_services_outlined, 'label': 'Checkup', 'sub': 'Dr. Sarah Jenkins', 'date': 'Jan 5, 2026'},
-  ];
+  String _normalizeSpecies(String? s) {
+    if (s == null || s.isEmpty) return 'Dog';
+    final cap = s[0].toUpperCase() + s.substring(1).toLowerCase();
+    return _petTypes.contains(cap) ? cap : 'Other';
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _nameCtrl =
+        TextEditingController(text: widget.pet['name'] as String? ?? '');
+    _breedCtrl =
+        TextEditingController(text: widget.pet['breed'] as String? ?? '');
+    _petType = _normalizeSpecies(widget.pet['species'] as String?);
+    _ageYears = (widget.pet['age'] as int?) ?? 1;
+    _photoUrl = widget.pet['photoUrl'] as String?;
+  }
 
   @override
   void dispose() {
@@ -32,15 +50,90 @@ class _PetProfilePageState extends State<PetProfilePage> {
   }
 
   Future<void> _save() async {
+    final name = _nameCtrl.text.trim();
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pet name cannot be empty')),
+      );
+      return;
+    }
     setState(() => _saving = true);
-    await Future.delayed(const Duration(milliseconds: 800));
+    final petId = widget.pet['petId'] as String;
+    final body = <String, dynamic>{
+      'name': name,
+      'species': _petType,
+      'age': _ageYears,
+    };
+    if (_breedCtrl.text.isNotEmpty) body['breed'] = _breedCtrl.text.trim();
+    if (_photoUrl != null && _photoUrl!.isNotEmpty)
+      body['photoUrl'] = _photoUrl;
+
+    final res = await ApiService.instance.patch('/pets/$petId', body);
     if (!mounted) return;
     setState(() => _saving = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Pet profile saved!'),
-        backgroundColor: Color(0xFF10B981),
-      ),
+    if (res.statusCode == 200) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Pet profile saved!'),
+          backgroundColor: Color(0xFF10B981),
+        ),
+      );
+      Navigator.pop(context, true);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Could not save changes'),
+            backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  Future<void> _uploadPhoto() async {
+    if (_uploadingPhoto) return;
+    setState(() => _uploadingPhoto = true);
+    try {
+      final url = await CloudinaryUploadService.instance.pickAndUploadImage(
+        folder: 'boo/pets',
+      );
+      if (url == null) return;
+      final petId = widget.pet['petId'] as String;
+      final res = await ApiService.instance.patch('/pets/$petId', {
+        'photoUrl': url,
+      });
+      if (!mounted) return;
+      if (res.statusCode == 200) {
+        setState(() => _photoUrl = url);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Pet photo updated'),
+            backgroundColor: Color(0xFF10B981),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not save pet photo'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      final message = e is ImageUploadValidationException
+          ? e.message
+          : 'Could not upload pet photo. Check your connection and try again.';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message), backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) setState(() => _uploadingPhoto = false);
+    }
+  }
+
+  Widget _petPhotoFallback() {
+    return Container(
+      color: const Color(0xFFF3F4F6),
+      child: const Icon(Icons.pets, color: Color(0xFF9CA3AF), size: 40),
     );
   }
 
@@ -63,58 +156,67 @@ class _PetProfilePageState extends State<PetProfilePage> {
           children: [
             // Pet avatar
             Center(
-              child: Stack(
-                children: [
-                  Container(
-                    width: 100,
-                    height: 100,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: orange, width: 2.5),
-                    ),
-                    child: ClipOval(
-                      child: Image.network(
-                        'https://picsum.photos/200?random=77',
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
-                          color: const Color(0xFFF3F4F6),
-                          child: const Icon(Icons.pets,
-                              color: Color(0xFF9CA3AF), size: 40),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    bottom: 0,
-                    right: 0,
-                    child: Container(
-                      width: 30,
-                      height: 30,
+              child: GestureDetector(
+                onTap: _uploadPhoto,
+                child: Stack(
+                  children: [
+                    Container(
+                      width: 100,
+                      height: 100,
                       decoration: BoxDecoration(
-                        color: orange,
                         shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2),
+                        border: Border.all(color: orange, width: 2.5),
                       ),
-                      child: const Icon(Icons.camera_alt_rounded,
-                          color: Colors.white, size: 14),
+                      child: ClipOval(
+                        child: _uploadingPhoto
+                            ? const ColoredBox(
+                                color: Color(0xFFF3F4F6),
+                                child: Center(
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
+                                ),
+                              )
+                            : (_photoUrl != null && _photoUrl!.isNotEmpty)
+                                ? Image.network(
+                                    _photoUrl!,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) =>
+                                        _petPhotoFallback(),
+                                  )
+                                : _petPhotoFallback(),
+                      ),
                     ),
-                  ),
-                ],
+                    Positioned(
+                      bottom: 0,
+                      right: 0,
+                      child: Container(
+                        width: 30,
+                        height: 30,
+                        decoration: BoxDecoration(
+                          color: orange,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                        ),
+                        child: const Icon(Icons.camera_alt_rounded,
+                            color: Colors.white, size: 14),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 8),
             Center(
               child: Text(
                 _nameCtrl.text,
-                style: const TextStyle(
-                    fontSize: 18, fontWeight: FontWeight.w900),
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
               ),
             ),
             Center(
               child: Text(
                 '$_petType · $_ageYears years old',
-                style: const TextStyle(
-                    color: Color(0xFF6B7280), fontSize: 13),
+                style: const TextStyle(color: Color(0xFF6B7280), fontSize: 13),
               ),
             ),
 
@@ -134,7 +236,6 @@ class _PetProfilePageState extends State<PetProfilePage> {
                   _FieldLabel('FULL NAME'),
                   const SizedBox(height: 6),
                   _BooInput(controller: _nameCtrl, hint: "Pet's name"),
-
                   const SizedBox(height: 14),
                   Row(
                     children: [
@@ -150,8 +251,8 @@ class _PetProfilePageState extends State<PetProfilePage> {
                               decoration: BoxDecoration(
                                 color: const Color(0xFFF9FAFB),
                                 borderRadius: BorderRadius.circular(14),
-                                border: Border.all(
-                                    color: const Color(0xFFE5E7EB)),
+                                border:
+                                    Border.all(color: const Color(0xFFE5E7EB)),
                               ),
                               child: DropdownButtonHideUnderline(
                                 child: DropdownButton<String>(
@@ -186,8 +287,8 @@ class _PetProfilePageState extends State<PetProfilePage> {
                               decoration: BoxDecoration(
                                 color: const Color(0xFFF9FAFB),
                                 borderRadius: BorderRadius.circular(14),
-                                border: Border.all(
-                                    color: const Color(0xFFE5E7EB)),
+                                border:
+                                    Border.all(color: const Color(0xFFE5E7EB)),
                               ),
                               child: Row(
                                 children: [
@@ -198,8 +299,7 @@ class _PetProfilePageState extends State<PetProfilePage> {
                                       }
                                     },
                                     child: const Icon(Icons.remove,
-                                        size: 18,
-                                        color: Color(0xFF6B7280)),
+                                        size: 18, color: Color(0xFF6B7280)),
                                   ),
                                   Expanded(
                                     child: Text(
@@ -210,11 +310,9 @@ class _PetProfilePageState extends State<PetProfilePage> {
                                     ),
                                   ),
                                   GestureDetector(
-                                    onTap: () =>
-                                        setState(() => _ageYears++),
+                                    onTap: () => setState(() => _ageYears++),
                                     child: const Icon(Icons.add,
-                                        size: 18,
-                                        color: Color(0xFF6B7280)),
+                                        size: 18, color: Color(0xFF6B7280)),
                                   ),
                                 ],
                               ),
@@ -224,34 +322,14 @@ class _PetProfilePageState extends State<PetProfilePage> {
                       ),
                     ],
                   ),
-
                   const SizedBox(height: 14),
                   _FieldLabel('BREED'),
                   const SizedBox(height: 6),
-                  _BooInput(controller: _breedCtrl, hint: 'e.g. Golden Retriever'),
+                  _BooInput(
+                      controller: _breedCtrl, hint: 'e.g. Golden Retriever'),
                 ],
               ),
             ),
-
-            const SizedBox(height: 20),
-
-            // Recent history
-            Row(
-              children: [
-                const Expanded(
-                  child: Text('Recent History',
-                      style: TextStyle(
-                          fontSize: 15, fontWeight: FontWeight.w900)),
-                ),
-                TextButton(
-                  onPressed: () {},
-                  child: const Text('See All',
-                      style: TextStyle(color: orange)),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            ..._recentHistory.map((h) => _HistoryTile(item: h)),
           ],
         ),
       ),
@@ -326,57 +404,8 @@ class _BooInput extends StatelessWidget {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide:
-              const BorderSide(color: Color(0xFFF68B1F), width: 1.2),
+          borderSide: const BorderSide(color: Color(0xFFF68B1F), width: 1.2),
         ),
-      ),
-    );
-  }
-}
-
-class _HistoryTile extends StatelessWidget {
-  final Map<String, dynamic> item;
-  const _HistoryTile({required this.item});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFEAECEF)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: const Color(0xFFF68B1F).withOpacity(0.12),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(item['icon'] as IconData,
-                color: const Color(0xFFF68B1F), size: 18),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(item['label'] as String,
-                    style: const TextStyle(fontWeight: FontWeight.w800)),
-                Text(item['sub'] as String,
-                    style: const TextStyle(
-                        color: Color(0xFF6B7280), fontSize: 12)),
-              ],
-            ),
-          ),
-          Text(item['date'] as String,
-              style: const TextStyle(
-                  color: Color(0xFF9CA3AF), fontSize: 12)),
-        ],
       ),
     );
   }

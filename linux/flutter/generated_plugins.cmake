@@ -3,7 +3,13 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  desktop_drop
+  file_selector_linux
   flutter_secure_storage_linux
+  media_kit_video
+  printing
+  record_linux
+  url_launcher_linux
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST

@@ -1,7 +1,11 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:boo/services/auth_service.dart';
+import 'package:boo/services/cloudinary_upload_service.dart';
+import 'provider_availability_screen.dart';
+import 'provider_reviews_screen.dart';
 import 'provider_services_page.dart';
+import 'verification_upload_screen.dart';
 
 class ProviderProfilePage extends StatefulWidget {
   const ProviderProfilePage({super.key});
@@ -24,11 +28,16 @@ class _ProviderProfilePageState extends State<ProviderProfilePage> {
 
   Future<Map<String, dynamic>> _fetchProfile() async {
     final res = await ApiService.instance.get('/providers/me');
-    if (res.statusCode == 200) return jsonDecode(res.body) as Map<String, dynamic>;
-    throw Exception('Failed to load profile');
+    if (res.statusCode == 200)
+      return jsonDecode(res.body) as Map<String, dynamic>;
+    throw Exception('HTTP ${res.statusCode}');
   }
 
-  void _refresh() => setState(() => _profileFuture = _fetchProfile());
+  void _refresh() {
+    setState(() {
+      _profileFuture = _fetchProfile();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -39,16 +48,18 @@ class _ProviderProfilePageState extends State<ProviderProfilePage> {
           future: _profileFuture,
           builder: (context, snap) {
             if (snap.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator(color: _orange));
+              return const Center(
+                  child: CircularProgressIndicator(color: _orange));
             }
             if (snap.hasError) {
               return Center(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.error_outline, color: Colors.red.shade300, size: 40),
+                    Icon(Icons.error_outline,
+                        color: Colors.red.shade300, size: 40),
                     const SizedBox(height: 12),
-                    const Text('Could not load profile'),
+                    Text('Could not load profile (${snap.error})'),
                     const SizedBox(height: 12),
                     TextButton(onPressed: _refresh, child: const Text('Retry')),
                   ],
@@ -64,13 +75,19 @@ class _ProviderProfilePageState extends State<ProviderProfilePage> {
   }
 }
 
-class _ProfileBody extends StatelessWidget {
+class _ProfileBody extends StatefulWidget {
   final Map<String, dynamic> profile;
   final VoidCallback onEditSaved;
 
   const _ProfileBody({required this.profile, required this.onEditSaved});
 
+  @override
+  State<_ProfileBody> createState() => _ProfileBodyState();
+}
+
+class _ProfileBodyState extends State<_ProfileBody> {
   static const _orange = Color(0xFFF68B1F);
+  bool _uploadingPhoto = false;
 
   String _verificationLabel(String? status) {
     switch (status) {
@@ -98,14 +115,62 @@ class _ProfileBody extends StatelessWidget {
     }
   }
 
+  Future<void> _uploadBusinessPhoto() async {
+    if (_uploadingPhoto) return;
+    setState(() => _uploadingPhoto = true);
+    try {
+      final url = await CloudinaryUploadService.instance.pickAndUploadImage(
+        folder: 'boo/providers',
+      );
+      if (url == null) return;
+
+      final res = await ApiService.instance.patch('/providers/me', {
+        'profilePhotoUrl': url,
+      });
+      if (!mounted) return;
+      if (res.statusCode == 200) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Business photo updated'),
+            backgroundColor: Color(0xFF10B981),
+          ),
+        );
+        widget.onEditSaved();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'We uploaded the photo, but could not save it to your profile. Please try again.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      final message = e is ImageUploadValidationException
+          ? e.message
+          : 'Could not upload your photo. Check your connection and try again.';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _uploadingPhoto = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final profile = widget.profile;
     final verificationStatus = profile['verificationStatus'] as String?;
     final services = (profile['services'] as List<dynamic>?) ?? [];
+    final photoUrl = profile['profilePhotoUrl'] as String?;
 
     return RefreshIndicator(
       color: _orange,
-      onRefresh: () async => onEditSaved(),
+      onRefresh: () async => widget.onEditSaved(),
       child: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         children: [
@@ -128,34 +193,57 @@ class _ProfileBody extends StatelessWidget {
           Center(
             child: Column(
               children: [
-                Stack(
-                  children: [
-                    Container(
-                      width: 88,
-                      height: 88,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.grey.shade200, width: 2),
+                GestureDetector(
+                  onTap: _uploadBusinessPhoto,
+                  child: Stack(
+                    children: [
+                      Container(
+                        width: 88,
+                        height: 88,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border:
+                              Border.all(color: Colors.grey.shade200, width: 2),
+                        ),
+                        child: ClipOval(
+                          child: _uploadingPhoto
+                              ? const ColoredBox(
+                                  color: Colors.white,
+                                  child: Center(
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2),
+                                  ),
+                                )
+                              : photoUrl != null && photoUrl.isNotEmpty
+                                  ? Image.network(
+                                      photoUrl,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) =>
+                                          const _BusinessPhotoFallback(),
+                                    )
+                                  : const _BusinessPhotoFallback(),
+                        ),
                       ),
-                      child: const Icon(Icons.person_outline, size: 44, color: Colors.black26),
-                    ),
-                    Positioned(
-                      bottom: 0,
-                      right: 0,
-                      child: Container(
-                        width: 28,
-                        height: 28,
-                        decoration: const BoxDecoration(color: _orange, shape: BoxShape.circle),
-                        child: const Icon(Icons.camera_alt, size: 14, color: Colors.white),
+                      Positioned(
+                        bottom: 0,
+                        right: 0,
+                        child: Container(
+                          width: 28,
+                          height: 28,
+                          decoration: const BoxDecoration(
+                              color: _orange, shape: BoxShape.circle),
+                          child: const Icon(Icons.camera_alt,
+                              size: 14, color: Colors.white),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 10),
                 Text(
                   profile['businessName'] as String? ?? '',
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.bold),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 6),
@@ -175,7 +263,8 @@ class _ProfileBody extends StatelessWidget {
               (profile['bio'] as String?)?.isNotEmpty == true
                   ? profile['bio'] as String
                   : 'No bio added yet.',
-              style: const TextStyle(fontSize: 14, color: Colors.black87, height: 1.5),
+              style: const TextStyle(
+                  fontSize: 14, color: Colors.black87, height: 1.5),
             ),
           ),
           const SizedBox(height: 12),
@@ -185,7 +274,8 @@ class _ProfileBody extends StatelessWidget {
             title: 'Location',
             child: Row(
               children: [
-                const Icon(Icons.location_on_outlined, size: 16, color: _orange),
+                const Icon(Icons.location_on_outlined,
+                    size: 16, color: _orange),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
@@ -208,7 +298,8 @@ class _ProfileBody extends StatelessWidget {
                 context,
                 MaterialPageRoute(builder: (_) => const ProviderServicesPage()),
               ),
-              child: const Text('Manage', style: TextStyle(color: _orange, fontSize: 13)),
+              child: const Text('Manage',
+                  style: TextStyle(color: _orange, fontSize: 13)),
             ),
             child: services.isEmpty
                 ? const Text(
@@ -226,10 +317,12 @@ class _ProfileBody extends StatelessWidget {
                               width: 36,
                               height: 36,
                               decoration: BoxDecoration(
-                                color: const Color(0xFFF68B1F).withOpacity(0.1),
+                                color: const Color(0xFFF68B1F)
+                                    .withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(8),
                               ),
-                              child: const Icon(Icons.content_cut_outlined, size: 16, color: _orange),
+                              child: const Icon(Icons.content_cut_outlined,
+                                  size: 16, color: _orange),
                             ),
                             const SizedBox(width: 10),
                             Expanded(
@@ -238,17 +331,21 @@ class _ProfileBody extends StatelessWidget {
                                 children: [
                                   Text(
                                     svc['serviceName'] as String? ?? '',
-                                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                                    style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600),
                                   ),
                                   Text(
-                                    'KSh ${svc['price']} · ${svc['durationMinutes']} min',
-                                    style: const TextStyle(fontSize: 12, color: Colors.black45),
+                                    'KSh ${svc['price']} ${_pricingUnitLabel(svc['pricingUnit'] as String?)} · ${svc['durationMinutes']} min',
+                                    style: const TextStyle(
+                                        fontSize: 12, color: Colors.black45),
                                   ),
                                 ],
                               ),
                             ),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 3),
                               decoration: BoxDecoration(
                                 color: (svc['isActive'] as bool? ?? true)
                                     ? Colors.green.shade50
@@ -256,7 +353,9 @@ class _ProfileBody extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: Text(
-                                (svc['isActive'] as bool? ?? true) ? 'Active' : 'Off',
+                                (svc['isActive'] as bool? ?? true)
+                                    ? 'Active'
+                                    : 'Off',
                                 style: TextStyle(
                                   fontSize: 11,
                                   color: (svc['isActive'] as bool? ?? true)
@@ -296,7 +395,166 @@ class _ProfileBody extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 12),
+
+          // Verification Documents
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: ListTile(
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+              leading: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: _orange.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.upload_file_rounded,
+                    color: _orange, size: 18),
+              ),
+              title: const Text('Verification Documents',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+              subtitle: const Text('Upload ID, certificates or portfolio',
+                  style: TextStyle(fontSize: 12, color: Colors.black45)),
+              trailing: const Icon(Icons.chevron_right, color: Colors.black26),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => const VerificationUploadScreen()),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // My Reviews
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: ListTile(
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+              leading: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: Colors.amber.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.star_rounded,
+                    color: Colors.amber, size: 18),
+              ),
+              title: const Text('My Reviews',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+              subtitle: const Text('See what pet owners say',
+                  style: TextStyle(fontSize: 12, color: Colors.black45)),
+              trailing: const Icon(Icons.chevron_right, color: Colors.black26),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => const ProviderReviewsScreen()),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Working Hours
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: ListTile(
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+              leading: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: _orange.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.schedule_rounded,
+                    color: _orange, size: 18),
+              ),
+              title: const Text('Working Hours',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+              subtitle: const Text('Set your availability',
+                  style: TextStyle(fontSize: 12, color: Colors.black45)),
+              trailing: const Icon(Icons.chevron_right, color: Colors.black26),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => const ProviderAvailabilityScreen()),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Log Out
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: ListTile(
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+              leading: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFEE2E2),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.logout_rounded,
+                    color: Color(0xFFEF4444), size: 18),
+              ),
+              title: const Text('Log Out',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w800, color: Color(0xFFEF4444))),
+              onTap: () async {
+                await AuthService.instance.logout();
+                if (!context.mounted) return;
+                Navigator.of(context)
+                    .pushNamedAndRemoveUntil('/login', (_) => false);
+              },
+            ),
+          ),
+          const SizedBox(height: 24),
         ],
       ),
     );
@@ -310,8 +568,46 @@ class _ProfileBody extends StatelessWidget {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => _EditProfileSheet(profile: profile, onSaved: onEditSaved),
+      builder: (_) => _EditProfileSheet(
+        profile: widget.profile,
+        onSaved: widget.onEditSaved,
+      ),
     );
+  }
+}
+
+class _BusinessPhotoFallback extends StatelessWidget {
+  const _BusinessPhotoFallback();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.white,
+      child: const Icon(
+        Icons.storefront_outlined,
+        size: 44,
+        color: Colors.black26,
+      ),
+    );
+  }
+}
+
+String _pricingUnitLabel(String? value) {
+  switch (value) {
+    case 'per_hour':
+    case 'per hour':
+      return 'per hour';
+    case 'per_night':
+    case 'per night':
+      return 'per night';
+    case 'per_day':
+    case 'per day':
+      return 'per day';
+    case 'per_session':
+    case 'per session':
+      return 'per session';
+    default:
+      return 'per session';
   }
 }
 
@@ -326,9 +622,9 @@ class _VerificationBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -337,7 +633,8 @@ class _VerificationBadge extends StatelessWidget {
           const SizedBox(width: 4),
           Text(
             label,
-            style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.w600),
+            style: TextStyle(
+                fontSize: 12, color: color, fontWeight: FontWeight.w600),
           ),
         ],
       ),
@@ -361,7 +658,7 @@ class _SectionCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -374,7 +671,10 @@ class _SectionCard extends StatelessWidget {
             children: [
               Text(
                 title,
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.black54),
+                style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black54),
               ),
               if (trailing != null) ...[const Spacer(), trailing!],
             ],
@@ -393,7 +693,8 @@ class _StatItem extends StatelessWidget {
   final IconData? icon;
   final Color? iconColor;
 
-  const _StatItem({required this.value, required this.label, this.icon, this.iconColor});
+  const _StatItem(
+      {required this.value, required this.label, this.icon, this.iconColor});
 
   @override
   Widget build(BuildContext context) {
@@ -402,11 +703,17 @@ class _StatItem extends StatelessWidget {
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (icon != null) ...[Icon(icon, size: 16, color: iconColor), const SizedBox(width: 4)],
-            Text(value, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+            if (icon != null) ...[
+              Icon(icon, size: 16, color: iconColor),
+              const SizedBox(width: 4)
+            ],
+            Text(value,
+                style:
+                    const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
           ],
         ),
-        Text(label, style: const TextStyle(fontSize: 12, color: Colors.black45)),
+        Text(label,
+            style: const TextStyle(fontSize: 12, color: Colors.black45)),
       ],
     );
   }
@@ -435,9 +742,12 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
   @override
   void initState() {
     super.initState();
-    _nameCtrl = TextEditingController(text: widget.profile['businessName'] as String? ?? '');
-    _bioCtrl = TextEditingController(text: widget.profile['bio'] as String? ?? '');
-    _locationCtrl = TextEditingController(text: widget.profile['location'] as String? ?? '');
+    _nameCtrl = TextEditingController(
+        text: widget.profile['businessName'] as String? ?? '');
+    _bioCtrl =
+        TextEditingController(text: widget.profile['bio'] as String? ?? '');
+    _locationCtrl = TextEditingController(
+        text: widget.profile['location'] as String? ?? '');
   }
 
   @override
@@ -462,13 +772,16 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
         widget.onSaved();
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not save changes'), backgroundColor: Colors.red),
+          const SnackBar(
+              content: Text('Could not save changes'),
+              backgroundColor: Colors.red),
         );
       }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Connection error'), backgroundColor: Colors.red),
+          const SnackBar(
+              content: Text('Connection error'), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -489,7 +802,8 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Edit Profile', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const Text('Edit Profile',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 20),
           _Field(label: 'Business Name', controller: _nameCtrl),
           const SizedBox(height: 14),
@@ -504,19 +818,24 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
               onPressed: _saving ? null : _save,
               style: ElevatedButton.styleFrom(
                 backgroundColor: _orange,
-                disabledBackgroundColor: _orange.withOpacity(0.5),
+                disabledBackgroundColor: _orange.withValues(alpha: 0.5),
                 elevation: 0,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
               ),
               child: _saving
                   ? const SizedBox(
                       width: 20,
                       height: 20,
-                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                      child: CircularProgressIndicator(
+                          color: Colors.white, strokeWidth: 2),
                     )
                   : const Text(
                       'Save changes',
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 16),
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 16),
                     ),
             ),
           ),
@@ -531,14 +850,19 @@ class _Field extends StatelessWidget {
   final TextEditingController controller;
   final int maxLines;
 
-  const _Field({required this.label, required this.controller, this.maxLines = 1});
+  const _Field(
+      {required this.label, required this.controller, this.maxLines = 1});
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.black54)),
+        Text(label,
+            style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Colors.black54)),
         const SizedBox(height: 6),
         TextField(
           controller: controller,
@@ -546,7 +870,8 @@ class _Field extends StatelessWidget {
           decoration: InputDecoration(
             filled: true,
             fillColor: const Color(0xFFF6F7FB),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: BorderSide.none,

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:boo/screens/pet_owner/onboarding/owner_onboarding_step1.dart';
 import 'package:boo/services/auth_service.dart';
+import 'package:boo/services/verification_upload_service.dart';
 import 'provider_pending_screen.dart';
 
 class ProviderOnboardingStep4 extends StatefulWidget {
@@ -34,8 +35,9 @@ class _ProviderOnboardingStep4State extends State<ProviderOnboardingStep4> {
   static const _orange = Color(0xFFF68B1F);
   static const _bg = Color(0xFFF6F7FB);
 
-  bool _idUploaded = false;
-  bool _certUploaded = false;
+  UploadedVerificationFile? _idDocument;
+  UploadedVerificationFile? _certDocument;
+  bool _uploading = false;
   bool _submitting = false;
 
   static const _categoryMap = {
@@ -56,9 +58,35 @@ class _ProviderOnboardingStep4State extends State<ProviderOnboardingStep4> {
     'Full day': 480,
   };
 
+  Future<void> _pickDocument(String documentType) async {
+    setState(() => _uploading = true);
+    try {
+      final file = await VerificationUploadService.instance.pickAndUpload(
+        documentType: documentType,
+      );
+      if (file == null) return;
+      setState(() {
+        if (documentType == 'government_id') {
+          _idDocument = file;
+        } else {
+          _certDocument = file;
+        }
+      });
+    } catch (e) {
+      if (mounted) {
+        _showError(e.toString().replaceFirst('Exception: ', ''));
+      }
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+    }
+  }
+
   Future<void> _submit() async {
     setState(() => _submitting = true);
     try {
+      final currentRole = await AuthService.instance.getUserRole();
+      final isUpgrade = currentRole == 'owner';
+
       final res = await ApiService.instance.post('/providers/onboard', {
         'businessName': widget.businessName,
         'bio': widget.bio,
@@ -72,19 +100,82 @@ class _ProviderOnboardingStep4State extends State<ProviderOnboardingStep4> {
       });
       if (!mounted) return;
       if (res.statusCode == 201) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const ProviderPendingScreen()),
-          (route) => false,
-        );
+        if (!isUpgrade) {
+          await _submitUploadedDocuments();
+        }
+        if (isUpgrade) {
+          await ApiService.instance.post('/auth/become-provider', {});
+          if (!mounted) return;
+          _showUpgradeModal();
+        } else {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const ProviderPendingScreen()),
+            (route) => false,
+          );
+        }
       } else {
         final body = jsonDecode(res.body);
         _showError(body['message']?.toString() ?? 'Something went wrong');
       }
-    } catch (_) {
-      if (mounted) _showError('Could not connect. Check your connection.');
+    } catch (e) {
+      if (mounted) {
+        _showError(e.toString().replaceFirst('Exception: ', ''));
+      }
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
+  }
+
+  Future<void> _submitUploadedDocuments() async {
+    final docs = [
+      if (_idDocument != null) _idDocument!,
+      if (_certDocument != null) _certDocument!,
+    ];
+    for (final doc in docs) {
+      await VerificationUploadService.instance.submitDocument(doc);
+    }
+  }
+
+  void _showUpgradeModal() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: const Text(
+          "You're now a provider! 🎉",
+          style: TextStyle(fontWeight: FontWeight.w800),
+        ),
+        content: const Text(
+          "Your provider profile has been submitted for review.\n\n"
+          "Please log out and log back in to access your provider dashboard. "
+          "You can upload verification documents from your provider profile.",
+          style: TextStyle(color: Color(0xFF6B7280), height: 1.4),
+        ),
+        actions: [
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () async {
+                await AuthService.instance.logout();
+                if (!context.mounted) return;
+                Navigator.of(context)
+                    .pushNamedAndRemoveUntil('/login', (_) => false);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFF68B1F),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+              child: const Text('Log out now',
+                  style: TextStyle(fontWeight: FontWeight.w800)),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showError(String msg) {
@@ -122,16 +213,20 @@ class _ProviderOnboardingStep4State extends State<ProviderOnboardingStep4> {
                 icon: Icons.badge_outlined,
                 title: 'Government ID or Passport',
                 subtitle: 'Tap to upload — encrypted and secure',
-                uploaded: _idUploaded,
-                onTap: () => setState(() => _idUploaded = !_idUploaded),
+                uploaded: _idDocument != null,
+                fileName: _idDocument?.fileName,
+                busy: _uploading || _submitting,
+                onTap: () => _pickDocument('government_id'),
               ),
               const SizedBox(height: 12),
               _UploadTile(
                 icon: Icons.workspace_premium_outlined,
                 title: 'Training certificate or portfolio',
                 subtitle: 'Tap to upload your credentials',
-                uploaded: _certUploaded,
-                onTap: () => setState(() => _certUploaded = !_certUploaded),
+                uploaded: _certDocument != null,
+                fileName: _certDocument?.fileName,
+                busy: _uploading || _submitting,
+                onTap: () => _pickDocument('certificate_or_portfolio'),
               ),
               const Spacer(),
               Row(
@@ -151,10 +246,10 @@ class _ProviderOnboardingStep4State extends State<ProviderOnboardingStep4> {
                 width: double.infinity,
                 height: 52,
                 child: ElevatedButton(
-                  onPressed: _submitting ? null : _submit,
+                  onPressed: (_submitting || _uploading) ? null : _submit,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _orange,
-                    disabledBackgroundColor: _orange.withOpacity(0.6),
+                    disabledBackgroundColor: _orange.withValues(alpha: 0.6),
                     elevation: 0,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
@@ -207,6 +302,8 @@ class _UploadTile extends StatelessWidget {
   final String title;
   final String subtitle;
   final bool uploaded;
+  final String? fileName;
+  final bool busy;
   final VoidCallback onTap;
 
   const _UploadTile({
@@ -214,13 +311,15 @@ class _UploadTile extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.uploaded,
+    required this.fileName,
+    required this.busy,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: busy ? null : onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.all(16),
@@ -239,7 +338,7 @@ class _UploadTile extends StatelessWidget {
               height: 44,
               decoration: BoxDecoration(
                 color: uploaded
-                    ? const Color(0xFFF68B1F).withOpacity(0.1)
+                    ? const Color(0xFFF68B1F).withValues(alpha: 0.1)
                     : Colors.grey.shade100,
                 borderRadius: BorderRadius.circular(10),
               ),
@@ -260,7 +359,7 @@ class _UploadTile extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    uploaded ? 'Uploaded ✓' : subtitle,
+                    uploaded ? fileName ?? 'Uploaded' : subtitle,
                     style: TextStyle(
                       fontSize: 12,
                       color: uploaded
@@ -271,11 +370,19 @@ class _UploadTile extends StatelessWidget {
                 ],
               ),
             ),
-            Icon(
-              Icons.attach_file_rounded,
-              size: 18,
-              color: uploaded ? const Color(0xFFF68B1F) : Colors.black26,
-            ),
+            busy
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Icon(
+                    uploaded
+                        ? Icons.check_circle_outline
+                        : Icons.attach_file_rounded,
+                    size: 18,
+                    color: uploaded ? const Color(0xFFF68B1F) : Colors.black26,
+                  ),
           ],
         ),
       ),

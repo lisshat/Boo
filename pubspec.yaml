@@ -41,10 +41,21 @@ dependencies:
   syncfusion_flutter_calendar: ^32.2.3
   http: ^1.2.0
   flutter_secure_storage: ^9.0.0
+  share_plus: ^12.0.2
+  flutter_svg: ^2.0.10+1
+  stream_chat_flutter: ^9.23.0
+  file_picker: ^10.3.10
+  url_launcher: ^6.3.0
+  fl_chart: ^0.69.0
+  pdf: ^3.10.0
+  printing: ^5.12.0
+  csv: ^6.0.0
+  universal_html: ^2.2.4
   
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  flutter_launcher_icons: ^0.14.3
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
@@ -65,7 +76,10 @@ flutter:
   uses-material-design: true
 
   # To add assets to your application, add an assets section, like this:
-  # assets:
+  assets:
+      - assets/images/boo_logo.svg
+      - assets/images/
+      - assets/icon/
   #   - images/a_dot_burr.jpeg
   #   - images/a_dot_ham.jpeg
 
@@ -94,3 +108,14 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/boo_icon.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/icon/boo_icon.png"
+  web:
+    generate: false
+  windows:
+    generate: false

@@ -1,14 +1,18 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
+import 'package:boo/services/stream_chat_service.dart';
 
-/// Base URL of the NestJS backend.
-/// Android emulator: use 10.0.2.2 to reach host machine localhost.
+/// Web uses localhost; Android emulator uses 10.0.2.2 to reach host localhost.
 /// Change to your Render URL for production.
-const String _baseUrl = 'http://10.0.2.2:3000';
+final String _baseUrl =
+    kIsWeb ? 'http://localhost:3000' : 'http://10.0.2.2:3000';
 
-const _storage = FlutterSecureStorage();
+const _storage = FlutterSecureStorage(
+  aOptions: AndroidOptions(encryptedSharedPreferences: true),
+);
 final navigatorKey = GlobalKey<NavigatorState>();
 
 class AuthService {
@@ -25,6 +29,16 @@ class AuthService {
     await _storage.write(key: 'access_token', value: accessToken);
     await _storage.write(key: 'refresh_token', value: refreshToken);
     await _storage.write(key: 'user_role', value: role);
+  }
+
+  String? _readString(
+      Map<String, dynamic> body, String snakeKey, String camelKey) {
+    return (body[snakeKey] as String?) ?? (body[camelKey] as String?);
+  }
+
+  String _readRole(Map<String, dynamic> body) {
+    final user = body['user'] as Map<String, dynamic>?;
+    return (user?['role'] as String?) ?? (body['role'] as String?) ?? 'owner';
   }
 
   Future<void> clearTokens() async {
@@ -51,11 +65,18 @@ class AuthService {
       );
       final body = jsonDecode(res.body) as Map<String, dynamic>;
       if (res.statusCode == 200 || res.statusCode == 201) {
+        final accessToken = _readString(body, 'access_token', 'accessToken');
+        final refreshToken = _readString(body, 'refresh_token', 'refreshToken');
+        if (accessToken == null || refreshToken == null) {
+          return 'Login response was missing auth tokens';
+        }
         await _saveTokens(
-          accessToken: body['accessToken'] as String,
-          refreshToken: body['refreshToken'] as String,
-          role: body['role'] as String,
+          accessToken: accessToken,
+          refreshToken: refreshToken,
+          role: _readRole(body),
         );
+        await BooStreamChatService.instance.saveSessionFromAuthPayload(body);
+        await BooStreamChatService.instance.connectFromStoredSession();
         return null;
       }
       return (body['message'] as String?) ?? 'Login failed';
@@ -84,15 +105,58 @@ class AuthService {
       );
       final body = jsonDecode(res.body) as Map<String, dynamic>;
       if (res.statusCode == 200 || res.statusCode == 201) {
+        final accessToken = _readString(body, 'access_token', 'accessToken');
+        final refreshToken = _readString(body, 'refresh_token', 'refreshToken');
+        if (accessToken == null || refreshToken == null) {
+          return 'Registration response was missing auth tokens';
+        }
         await _saveTokens(
-          accessToken: body['accessToken'] as String,
-          refreshToken: body['refreshToken'] as String,
-          role: body['role'] as String,
+          accessToken: accessToken,
+          refreshToken: refreshToken,
+          role: _readRole(body),
         );
+        await BooStreamChatService.instance.saveSessionFromAuthPayload(body);
+        await BooStreamChatService.instance.connectFromStoredSession();
         return null;
       }
       final msg = body['message'];
-      return (msg is List ? msg.first : msg) as String? ?? 'Registration failed';
+      return (msg is List ? msg.first : msg) as String? ??
+          'Registration failed';
+    } catch (_) {
+      return 'Could not reach server. Check your connection.';
+    }
+  }
+
+  Future<String?> forgotPassword(String email) async {
+    try {
+      final res = await http
+          .post(
+            Uri.parse('$_baseUrl/auth/forgot-password'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'email': email}),
+          )
+          .timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200 || res.statusCode == 201) return null;
+      return _errorMessageFromResponse(res, 'Could not send reset link');
+    } catch (_) {
+      return 'Could not reach server. Check your connection.';
+    }
+  }
+
+  Future<String?> resetPassword({
+    required String token,
+    required String newPassword,
+  }) async {
+    try {
+      final res = await http
+          .post(
+            Uri.parse('$_baseUrl/auth/reset-password'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'token': token, 'newPassword': newPassword}),
+          )
+          .timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200 || res.statusCode == 201) return null;
+      return _errorMessageFromResponse(res, 'Could not update password');
     } catch (_) {
       return 'Could not reach server. Check your connection.';
     }
@@ -101,7 +165,7 @@ class AuthService {
   Future<String?> refreshToken() async {
     try {
       final refreshToken = await _storage.read(key: 'refresh_token');
-      if (refreshToken == null) return 'No refresh token available';    
+      if (refreshToken == null) return 'No refresh token available';
       final res = await http.post(
         Uri.parse('$_baseUrl/auth/refresh'),
         headers: {'Content-Type': 'application/json'},
@@ -109,10 +173,15 @@ class AuthService {
       );
       final body = jsonDecode(res.body) as Map<String, dynamic>;
       if (res.statusCode == 200) {
+        final accessToken = _readString(body, 'access_token', 'accessToken');
+        final refreshToken = _readString(body, 'refresh_token', 'refreshToken');
+        if (accessToken == null || refreshToken == null) {
+          return 'Token refresh response was missing auth tokens';
+        }
         await _saveTokens(
-          accessToken: body['accessToken'] as String,
-          refreshToken: body['refreshToken'] as String,
-          role: body['role'] as String,
+          accessToken: accessToken,
+          refreshToken: refreshToken,
+          role: _readRole(body),
         );
         return null;
       }
@@ -120,11 +189,23 @@ class AuthService {
     } catch (_) {
       return 'Could not reach server. Check your connection.';
     }
-
   }
 
-  Future<void> logout() => clearTokens();
+  Future<void> logout() async {
+    UserCache.instance.clear();
+    await BooStreamChatService.instance.disconnect();
+    await clearTokens();
+  }
+}
 
+String _errorMessageFromResponse(http.Response res, String fallback) {
+  try {
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    final message = body['message'];
+    if (message is List && message.isNotEmpty) return message.first.toString();
+    if (message is String && message.isNotEmpty) return message;
+  } catch (_) {}
+  return fallback;
 }
 // ── Generic authenticated HTTP client ──────────────────────────────
 
@@ -132,104 +213,97 @@ class ApiService {
   ApiService._();
   static final ApiService instance = ApiService._();
 
-  Future<http.Response> get(String path) async {
+  Future<Map<String, String>> _authHeaders() async {
     final token = await AuthService.instance.getAccessToken();
-    final res = await http.get(
-      Uri.parse('$_baseUrl$path'),
-      headers: {
-        'Content-Type': 'application/json',
-        if (token != null) 'Authorization': 'Bearer $token',
-      },
-    );
+    return {
+      'Content-Type': 'application/json',
+      if (token != null) 'Authorization': 'Bearer $token',
+    };
+  }
 
-    if(res.statusCode == 401) {
-      // Handle token expiration, e.g., by trying to refresh the token
-      // and retrying the request. This is a simplified example.
-     await AuthService.instance.refreshToken();
-      final retried = await get(path); // Retry the request after refreshing the token
+  // Raw calls — no retry logic, no recursion.
+  Future<http.Response> _rawGet(String path) async {
+    return http
+        .get(Uri.parse('$_baseUrl$path'), headers: await _authHeaders())
+        .timeout(const Duration(seconds: 10));
+  }
 
-      if(retried.statusCode == 401) {
-        // If it still fails, log out the user
-        await AuthService.instance.logout();
-        navigatorKey.currentState?.pushNamedAndRemoveUntil('/login', (route) => false);
-        throw Exception('Session expired. Please log in again.');
-      }
-    
+  Future<http.Response> _rawPost(String path, Map<String, dynamic> body) async {
+    return http
+        .post(Uri.parse('$_baseUrl$path'),
+            headers: await _authHeaders(), body: jsonEncode(body))
+        .timeout(const Duration(seconds: 10));
+  }
+
+  Future<http.Response> _rawPatch(
+      String path, Map<String, dynamic> body) async {
+    return http
+        .patch(Uri.parse('$_baseUrl$path'),
+            headers: await _authHeaders(), body: jsonEncode(body))
+        .timeout(const Duration(seconds: 10));
+  }
+
+  Future<http.Response> _rawPut(String path, Map<String, dynamic> body) async {
+    return http
+        .put(Uri.parse('$_baseUrl$path'),
+            headers: await _authHeaders(), body: jsonEncode(body))
+        .timeout(const Duration(seconds: 10));
+  }
+
+  Future<http.Response> _rawDelete(String path) async {
+    return http
+        .delete(Uri.parse('$_baseUrl$path'), headers: await _authHeaders())
+        .timeout(const Duration(seconds: 10));
+  }
+
+  // One refresh attempt, then force-logout. Never calls itself.
+  Future<http.Response> _withRefresh(
+      Future<http.Response> Function() call) async {
+    final res = await call();
+    if (res.statusCode != 401) return res;
+
+    final refreshError = await AuthService.instance.refreshToken();
+    if (refreshError != null) {
+      await AuthService.instance.logout();
+      navigatorKey.currentState
+          ?.pushNamedAndRemoveUntil('/login', (route) => false);
+      throw Exception('Session expired. Please log in again.');
+    }
+
+    final retried = await call();
+    if (retried.statusCode == 401) {
+      await AuthService.instance.logout();
+      navigatorKey.currentState
+          ?.pushNamedAndRemoveUntil('/login', (route) => false);
+      throw Exception('Session expired. Please log in again.');
+    }
     return retried;
   }
-   return res;
-  }
 
-  Future<http.Response> post(String path, Map<String, dynamic> body) async {
-    final token = await AuthService.instance.getAccessToken();
-    final res = await http.post(
-      Uri.parse('$_baseUrl$path'),
-      headers: {
-        'Content-Type': 'application/json',
-        if (token != null) 'Authorization': 'Bearer $token',
-      },
-      body: jsonEncode(body),
-    );
+  Future<http.Response> get(String path) => _withRefresh(() => _rawGet(path));
 
-    if (res.statusCode == 401) {
-      await AuthService.instance.refreshToken();
-      final retried = await post(path, body);
-      if (retried.statusCode == 401) {
-        await AuthService.instance.logout();
-        navigatorKey.currentState?.pushNamedAndRemoveUntil('/login', (route) => false);
-        throw Exception('Session expired. Please log in again.');
-      }
-      return retried;
-    }
-    return res;
-  }
+  Future<http.Response> post(String path, Map<String, dynamic> body) =>
+      _withRefresh(() => _rawPost(path, body));
 
-  Future<http.Response> patch(String path, Map<String, dynamic> body) async {
-    final token = await AuthService.instance.getAccessToken();
-    final res = await http.patch(
-      Uri.parse('$_baseUrl$path'),
-      headers: {
-        'Content-Type': 'application/json',
-        if (token != null) 'Authorization': 'Bearer $token',
-      },
-      body: jsonEncode(body),
-    );
+  Future<http.Response> patch(String path, Map<String, dynamic> body) =>
+      _withRefresh(() => _rawPatch(path, body));
 
-    if (res.statusCode == 401) {
-      await AuthService.instance.refreshToken();
-      final retried = await patch(path, body);
-      if (retried.statusCode == 401) {
-        await AuthService.instance.logout();
-        navigatorKey.currentState?.pushNamedAndRemoveUntil('/login', (route) => false);
-        throw Exception('Session expired. Please log in again.');
-      }
-      return retried;
-    }
-    return res;
-  }
+  Future<http.Response> put(String path, Map<String, dynamic> body) =>
+      _withRefresh(() => _rawPut(path, body));
 
-  Future<http.Response> delete(String path) async {
-    final token = await AuthService.instance.getAccessToken();
-    final res = await http.delete(
-      Uri.parse('$_baseUrl$path'),
-      headers: {
-        'Content-Type': 'application/json',
-        if (token != null) 'Authorization': 'Bearer $token',
-      },
-    );
+  Future<http.Response> delete(String path) =>
+      _withRefresh(() => _rawDelete(path));
+}
 
-    if (res.statusCode == 401) {
-      await AuthService.instance.refreshToken();
-      final retried = await delete(path);
-      if (retried.statusCode == 401) {
-        await AuthService.instance.logout();
-        navigatorKey.currentState?.pushNamedAndRemoveUntil('/login', (route) => false);
-        throw Exception('Session expired. Please log in again.');
-      }
-      return retried;
-    }
-    return res;
-  }
+// ── In-memory user cache ───────────────────────────────────────────────────────
 
+class UserCache {
+  UserCache._();
+  static final UserCache instance = UserCache._();
 
+  Map<String, dynamic>? _data;
+
+  Map<String, dynamic>? get data => _data;
+  void set(Map<String, dynamic> data) => _data = data;
+  void clear() => _data = null;
 }

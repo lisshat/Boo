@@ -1,5 +1,7 @@
 import 'package:boo/models/provider_models.dart';
 import 'package:boo/services/booking_service.dart';
+import 'package:boo/services/reviews_service.dart';
+import 'package:boo/screens/pet_owner/leave_review_screen.dart';
 import 'package:flutter/material.dart';
 
 class BookingsPage extends StatefulWidget {
@@ -13,6 +15,7 @@ class _BookingsPageState extends State<BookingsPage>
     with SingleTickerProviderStateMixin {
   late TabController _tab;
   List<BookingRecord> _bookings = [];
+  Set<String> _reviewedBookingIds = {};
   bool _isLoading = true;
   String? _error;
 
@@ -26,10 +29,32 @@ class _BookingsPageState extends State<BookingsPage>
   Future<void> _loadBookings() async {
     setState(() { _isLoading = true; _error = null; });
     try {
-      final bookings = await BookingService.instance.getBookings();
-      if (mounted) setState(() { _bookings = bookings; _isLoading = false; });
+      final results = await Future.wait([
+        BookingService.instance.getBookings(),
+        ReviewsService.instance.getMyReviewedBookingIds(),
+      ]);
+      if (mounted) {
+        setState(() {
+          _bookings = results[0] as List<BookingRecord>;
+          _reviewedBookingIds = results[1] as Set<String>;
+          _isLoading = false;
+        });
+      }
     } catch (_) {
       if (mounted) setState(() { _error = 'Could not load bookings'; _isLoading = false; });
+    }
+  }
+
+  Future<void> _cancelBooking(String bookingId) async {
+    try {
+      await BookingService.instance.cancelBooking(bookingId);
+      _loadBookings();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not cancel booking'), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 
@@ -41,16 +66,24 @@ class _BookingsPageState extends State<BookingsPage>
 
   @override
   Widget build(BuildContext context) {
+    final cutoff = DateTime.now().subtract(const Duration(hours: 2));
     final upcoming = _bookings
         .where((b) =>
-            b.status == BookingStatus.upcoming ||
-            b.status == BookingStatus.pendingReschedule ||
-            b.status == BookingStatus.reviewPending)
+            (b.status == BookingStatus.upcoming ||
+             b.status == BookingStatus.pendingReschedule ||
+             b.status == BookingStatus.reviewPending) &&
+            b.bookingDatetime.isAfter(cutoff))
         .toList();
     final past = _bookings
         .where((b) =>
             b.status == BookingStatus.completed ||
-            b.status == BookingStatus.cancelled)
+            b.status == BookingStatus.cancelled ||
+            b.status == BookingStatus.declined ||
+            // Stale: upcoming/pending but booking time is more than 2h ago
+            ((b.status == BookingStatus.upcoming ||
+              b.status == BookingStatus.pendingReschedule ||
+              b.status == BookingStatus.reviewPending) &&
+             b.bookingDatetime.isBefore(cutoff)))
         .toList();
 
     return SafeArea(
@@ -101,8 +134,20 @@ class _BookingsPageState extends State<BookingsPage>
                     : TabBarView(
                         controller: _tab,
                         children: [
-                          _BookingList(bookings: upcoming, emptyLabel: 'No upcoming bookings'),
-                          _BookingList(bookings: past, emptyLabel: 'No past bookings'),
+                          _BookingList(
+                            bookings: upcoming,
+                            emptyLabel: 'No upcoming bookings',
+                            onCancel: _cancelBooking,
+                            reviewedIds: _reviewedBookingIds,
+                            onReviewSubmitted: _loadBookings,
+                          ),
+                          _BookingList(
+                            bookings: past,
+                            emptyLabel: 'No past bookings',
+                            onCancel: _cancelBooking,
+                            reviewedIds: _reviewedBookingIds,
+                            onReviewSubmitted: _loadBookings,
+                          ),
                         ],
                       ),
           ),
@@ -115,8 +160,17 @@ class _BookingsPageState extends State<BookingsPage>
 class _BookingList extends StatelessWidget {
   final List<BookingRecord> bookings;
   final String emptyLabel;
+  final Future<void> Function(String bookingId) onCancel;
+  final Set<String> reviewedIds;
+  final VoidCallback onReviewSubmitted;
 
-  const _BookingList({required this.bookings, required this.emptyLabel});
+  const _BookingList({
+    required this.bookings,
+    required this.emptyLabel,
+    required this.onCancel,
+    required this.reviewedIds,
+    required this.onReviewSubmitted,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -130,16 +184,110 @@ class _BookingList extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       itemCount: bookings.length,
       separatorBuilder: (_, __) => const SizedBox(height: 12),
-      itemBuilder: (_, i) => _BookingCard(booking: bookings[i]),
+      itemBuilder: (_, i) => _BookingCard(
+        booking: bookings[i],
+        onCancel: onCancel,
+        alreadyReviewed: reviewedIds.contains(bookings[i].id),
+        onReviewSubmitted: onReviewSubmitted,
+      ),
     );
   }
 }
 
-class _BookingCard extends StatelessWidget {
+class _BookingCard extends StatefulWidget {
   final BookingRecord booking;
-  const _BookingCard({required this.booking});
+  final Future<void> Function(String bookingId) onCancel;
+  final bool alreadyReviewed;
+  final VoidCallback onReviewSubmitted;
+
+  const _BookingCard({
+    required this.booking,
+    required this.onCancel,
+    required this.alreadyReviewed,
+    required this.onReviewSubmitted,
+  });
+
+  @override
+  State<_BookingCard> createState() => _BookingCardState();
+}
+
+class _BookingCardState extends State<_BookingCard> {
+  bool _cancelling = false;
 
   static const orange = Color(0xFFF68B1F);
+
+  bool get _isStale =>
+      widget.booking.status == BookingStatus.upcoming &&
+      widget.booking.bookingDatetime
+          .isBefore(DateTime.now().subtract(const Duration(hours: 2)));
+
+  void _showDeclineDetails(BuildContext context, BookingRecord booking) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 36),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.cancel_outlined, color: Color(0xFFEF4444), size: 22),
+                const SizedBox(width: 8),
+                const Text('Booking Declined',
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Color(0xFFEF4444))),
+              ],
+            ),
+            const SizedBox(height: 20),
+            _DetailRow(label: 'Provider', value: booking.providerName),
+            const SizedBox(height: 10),
+            _DetailRow(label: 'Service', value: booking.serviceName),
+            const SizedBox(height: 10),
+            _DetailRow(label: 'Date & time', value: '${_formatDate(booking.date)} · ${booking.time}'),
+            const SizedBox(height: 10),
+            _DetailRow(label: 'Amount', value: booking.priceLabel),
+            const SizedBox(height: 16),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEF2F2),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFFCA5A5)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Reason for declining',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFB91C1C))),
+                  const SizedBox(height: 6),
+                  Text(
+                    booking.declineReason ?? 'The provider did not provide a reason.',
+                    style: const TextStyle(fontSize: 14, color: Color(0xFF374151), height: 1.4),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: () => Navigator.pop(context),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  side: const BorderSide(color: Color(0xFFE5E7EB)),
+                ),
+                child: const Text('Close', style: TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF374151))),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   String _formatDate(DateTime dt) {
     const months = [
@@ -150,12 +298,15 @@ class _BookingCard extends StatelessWidget {
   }
 
   Color _statusColor(BookingStatus s) {
+    if (_isStale) return const Color(0xFF9CA3AF);
     switch (s) {
       case BookingStatus.upcoming:
         return const Color(0xFF10B981);
       case BookingStatus.completed:
         return const Color(0xFF6366F1);
       case BookingStatus.cancelled:
+        return const Color(0xFFEF4444);
+      case BookingStatus.declined:
         return const Color(0xFFEF4444);
       case BookingStatus.pendingReschedule:
         return const Color(0xFFF59E0B);
@@ -165,6 +316,7 @@ class _BookingCard extends StatelessWidget {
   }
 
   String _statusLabel(BookingStatus s) {
+    if (_isStale) return 'Expired';
     switch (s) {
       case BookingStatus.upcoming:
         return 'Upcoming';
@@ -172,6 +324,8 @@ class _BookingCard extends StatelessWidget {
         return 'Completed';
       case BookingStatus.cancelled:
         return 'Cancelled';
+      case BookingStatus.declined:
+        return 'Declined';
       case BookingStatus.pendingReschedule:
         return 'Reschedule Pending';
       case BookingStatus.reviewPending:
@@ -179,8 +333,15 @@ class _BookingCard extends StatelessWidget {
     }
   }
 
+  Future<void> _doCancel() async {
+    setState(() => _cancelling = true);
+    await widget.onCancel(widget.booking.id);
+    if (mounted) setState(() => _cancelling = false);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final booking = widget.booking;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -262,13 +423,37 @@ class _BookingCard extends StatelessWidget {
                       fontSize: 13)),
             ],
           ),
+          if (booking.status == BookingStatus.declined) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEE2E2),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('This booking was declined',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFB91C1C))),
+                  const SizedBox(height: 4),
+                  Text(
+                    booking.declineReason != null
+                        ? 'Reason: ${booking.declineReason}'
+                        : 'The provider did not provide a reason.',
+                    style: const TextStyle(fontSize: 12, color: Color(0xFFEF4444)),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           Row(
             children: [
-              if (booking.status == BookingStatus.upcoming) ...[
+              if (booking.status == BookingStatus.upcoming && !_isStale) ...[
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: () {},
+                    onPressed: _cancelling ? null : _doCancel,
                     style: OutlinedButton.styleFrom(
                       foregroundColor: const Color(0xFFEF4444),
                       side: const BorderSide(color: Color(0xFFEF4444)),
@@ -276,31 +461,63 @@ class _BookingCard extends StatelessWidget {
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10)),
                     ),
-                    child: const Text('Cancel',
-                        style: TextStyle(
-                            fontWeight: FontWeight.w700, fontSize: 13)),
+                    child: _cancelling
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFEF4444)),
+                          )
+                        : const Text('Cancel',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w700, fontSize: 13)),
                   ),
                 ),
-                const SizedBox(width: 10),
+              ] else if (booking.status == BookingStatus.declined)
                 Expanded(
-                  child: ElevatedButton(
-                    onPressed: () {},
+                  child: OutlinedButton(
+                    onPressed: () => _showDeclineDetails(context, booking),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFFEF4444),
+                      side: const BorderSide(color: Color(0xFFEF4444)),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    child: const Text('View Details',
+                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                  ),
+                )
+              else if (booking.status == BookingStatus.completed && !widget.alreadyReviewed)
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () async {
+                      final submitted = await Navigator.push<bool>(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => LeaveReviewScreen(
+                            bookingId: booking.id,
+                            providerName: booking.providerName,
+                            serviceName: booking.serviceName,
+                          ),
+                        ),
+                      );
+                      if (submitted == true) widget.onReviewSubmitted();
+                    },
+                    icon: const Icon(Icons.star_rounded, size: 15),
+                    label: const Text('Leave a Review',
+                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: orange,
                       foregroundColor: Colors.white,
+                      elevation: 0,
                       padding: const EdgeInsets.symmetric(vertical: 8),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     ),
-                    child: const Text('Manage',
-                        style: TextStyle(
-                            fontWeight: FontWeight.w700, fontSize: 13)),
                   ),
-                ),
-              ] else
+                )
+              else
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: () {},
+                    onPressed: null,
                     style: OutlinedButton.styleFrom(
                       foregroundColor: const Color(0xFF374151),
                       side: const BorderSide(color: Color(0xFFE5E7EB)),
@@ -317,6 +534,31 @@ class _BookingCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _DetailRow extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _DetailRow({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 100,
+          child: Text(label,
+              style: const TextStyle(fontSize: 13, color: Colors.black45, fontWeight: FontWeight.w500)),
+        ),
+        Expanded(
+          child: Text(value,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF111827))),
+        ),
+      ],
     );
   }
 }

@@ -1,53 +1,40 @@
+import 'package:boo/services/stream_chat_service.dart';
 import 'package:flutter/material.dart';
+import 'package:stream_chat_flutter/stream_chat_flutter.dart';
 
-// Demo chat thread data
-class _Thread {
-  final String id;
-  final String providerName;
-  final String providerImage;
-  final String lastMessage;
-  final String time;
-  final int unread;
+class ChatPage extends StatefulWidget {
+  const ChatPage({super.key});
 
-  const _Thread({
-    required this.id,
-    required this.providerName,
-    required this.providerImage,
-    required this.lastMessage,
-    required this.time,
-    required this.unread,
-  });
+  @override
+  State<ChatPage> createState() => _ChatPageState();
 }
 
-const _threads = [
-  _Thread(
-    id: 't1',
-    providerName: 'Dr. Sarah Jenkins',
-    providerImage: 'https://picsum.photos/200?random=11',
-    lastMessage: "It was amazing! Thank you for choosing Charlie...",
-    time: 'Today',
-    unread: 2,
-  ),
-  _Thread(
-    id: 't2',
-    providerName: 'Kipepeo Grooming Studio',
-    providerImage: 'https://picsum.photos/200?random=22',
-    lastMessage: "Charlie's appointment is confirmed for Friday!",
-    time: 'Yesterday',
-    unread: 0,
-  ),
-  _Thread(
-    id: 't3',
-    providerName: "Nia Pet Sitting",
-    providerImage: 'https://picsum.photos/200?random=44',
-    lastMessage: "Sure, I can do a drop-in on Saturday at 10am.",
-    time: 'Mon',
-    unread: 0,
-  ),
-];
+class _ChatPageState extends State<ChatPage> {
+  late final Future<Stream<List<Channel>>?> _channelsFuture;
 
-class ChatPage extends StatelessWidget {
-  const ChatPage({super.key});
+  @override
+  void initState() {
+    super.initState();
+    _channelsFuture = _loadChannels();
+  }
+
+  Future<Stream<List<Channel>>?> _loadChannels() async {
+    final streamService = BooStreamChatService.instance;
+    final connected = await streamService.connectFromStoredSession();
+    final userId = streamService.currentUserId;
+    if (!connected || userId == null) return null;
+
+    return streamService.client.queryChannels(
+      filter: Filter.in_('members', [userId]),
+      channelStateSort: const [
+        SortOption<ChannelState>.desc('last_message_at'),
+      ],
+      paginationParams: const PaginationParams(limit: 30),
+      messageLimit: 30,
+      watch: true,
+      state: true,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -60,9 +47,10 @@ class ChatPage extends StatelessWidget {
             child: Row(
               children: [
                 const Expanded(
-                  child: Text('Messages',
-                      style: TextStyle(
-                          fontSize: 20, fontWeight: FontWeight.w900)),
+                  child: Text(
+                    'Messages',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+                  ),
                 ),
                 IconButton(
                   onPressed: () {},
@@ -72,7 +60,6 @@ class ChatPage extends StatelessWidget {
               ],
             ),
           ),
-          // Search bar
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Container(
@@ -86,22 +73,58 @@ class ChatPage extends StatelessWidget {
                 children: [
                   const Icon(Icons.search, color: Color(0xFF9CA3AF), size: 18),
                   const SizedBox(width: 8),
-                  Text('Search conversations',
-                      style: TextStyle(
-                          color: Colors.grey.shade400, fontSize: 14)),
+                  Text(
+                    'Search conversations',
+                    style: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+                  ),
                 ],
               ),
             ),
           ),
           const SizedBox(height: 12),
           Expanded(
-            child: ListView.separated(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: _threads.length,
-              separatorBuilder: (_, __) =>
-                  const Divider(height: 1, color: Color(0xFFEAECEF)),
-              itemBuilder: (context, i) =>
-                  _ThreadTile(thread: _threads[i]),
+            child: FutureBuilder<Stream<List<Channel>>?>(
+              future: _channelsFuture,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final channelStream = snapshot.data;
+                if (channelStream == null) {
+                  return const _EmptyState(
+                    title: 'Chat unavailable',
+                    message: 'Log in again after Stream is configured.',
+                  );
+                }
+                return StreamBuilder<List<Channel>>(
+                  stream: channelStream,
+                  builder: (context, channelSnapshot) {
+                    final channels = channelSnapshot.data ?? const <Channel>[];
+                    if (channelSnapshot.connectionState ==
+                            ConnectionState.waiting &&
+                        channels.isEmpty) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    if (channels.isEmpty) {
+                      return const _EmptyState(
+                        title: 'No messages yet',
+                        message:
+                            'Conversations with providers will appear here.',
+                      );
+                    }
+                    return ListView.separated(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      itemCount: channels.length,
+                      separatorBuilder: (_, __) =>
+                          const Divider(height: 1, color: Color(0xFFEAECEF)),
+                      itemBuilder: (context, i) => _ThreadTile(
+                        channel: channels[i],
+                        onReadChanged: () => setState(() {}),
+                      ),
+                    );
+                  },
+                );
+              },
             ),
           ),
         ],
@@ -111,170 +134,181 @@ class ChatPage extends StatelessWidget {
 }
 
 class _ThreadTile extends StatelessWidget {
-  final _Thread thread;
-  const _ThreadTile({required this.thread});
+  final Channel channel;
+  final VoidCallback onReadChanged;
+
+  const _ThreadTile({required this.channel, required this.onReadChanged});
 
   static const orange = Color(0xFFF68B1F);
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(14),
-      onTap: () {
-        Navigator.of(context).push(MaterialPageRoute(
-          builder: (_) => _ChatConversationScreen(thread: thread),
-        ));
-      },
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        child: Row(
-          children: [
-            Stack(
+    final otherUser = _otherUser(channel);
+    final lastMessage = _lastMessage(channel);
+
+    return StreamBuilder<int>(
+      stream: channel.state?.unreadCountStream,
+      initialData: channel.state?.unreadCount ?? 0,
+      builder: (context, unreadSnapshot) {
+        final unread = unreadSnapshot.data ?? 0;
+        return InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () async {
+            await _markChannelRead(channel);
+            onReadChanged();
+            await Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => ChatConversationScreen(channel: channel),
+            ));
+            await _markChannelRead(channel);
+            onReadChanged();
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Row(
               children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(26),
-                  child: Image.network(
-                    thread.providerImage,
-                    width: 52,
-                    height: 52,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(
-                      width: 52,
-                      height: 52,
-                      color: const Color(0xFFF3F4F6),
-                      child: const Icon(Icons.person,
-                          color: Color(0xFF9CA3AF)),
+                Stack(
+                  children: [
+                    _AvatarImage(user: otherUser, size: 52),
+                    Positioned(
+                      bottom: 0,
+                      right: 0,
+                      child: Container(
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: otherUser?.online == true
+                              ? const Color(0xFF10B981)
+                              : const Color(0xFFD1D5DB),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                        ),
+                      ),
                     ),
-                  ),
+                  ],
                 ),
-                // Online dot
-                Positioned(
-                  bottom: 0,
-                  right: 0,
-                  child: Container(
-                    width: 12,
-                    height: 12,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF10B981),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 2),
-                    ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              _conversationName(channel, otherUser),
+                              style: TextStyle(
+                                fontWeight: unread > 0
+                                    ? FontWeight.w900
+                                    : FontWeight.w700,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                          Text(
+                            _relativeTime(lastMessage?.createdAt ??
+                                channel.lastMessageAt),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color:
+                                  unread > 0 ? orange : const Color(0xFF9CA3AF),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              (lastMessage?.text?.trim().isNotEmpty ?? false)
+                                  ? lastMessage!.text!
+                                  : 'No messages yet',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: unread > 0
+                                    ? const Color(0xFF374151)
+                                    : const Color(0xFF9CA3AF),
+                              ),
+                            ),
+                          ),
+                          if (unread > 0)
+                            Container(
+                              width: 20,
+                              height: 20,
+                              decoration: const BoxDecoration(
+                                color: orange,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Center(
+                                child: Text(
+                                  '$unread',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          thread.providerName,
-                          style: TextStyle(
-                            fontWeight: thread.unread > 0
-                                ? FontWeight.w900
-                                : FontWeight.w700,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ),
-                      Text(thread.time,
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: thread.unread > 0
-                                  ? orange
-                                  : const Color(0xFF9CA3AF))),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          thread.lastMessage,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: thread.unread > 0
-                                ? const Color(0xFF374151)
-                                : const Color(0xFF9CA3AF),
-                          ),
-                        ),
-                      ),
-                      if (thread.unread > 0)
-                        Container(
-                          width: 20,
-                          height: 20,
-                          decoration: const BoxDecoration(
-                            color: orange,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Center(
-                            child: Text(
-                              '${thread.unread}',
-                              style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w800),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }
 
-// ── Conversation screen ──────────────────────────────────────────────
-
-class _ChatMessage {
-  final String text;
-  final bool isMe;
-  final String time;
-
-  const _ChatMessage(
-      {required this.text, required this.isMe, required this.time});
+Future<void> _markChannelRead(Channel channel) async {
+  try {
+    await channel.markRead();
+  } finally {
+    channel.state?.unreadCount = 0;
+  }
 }
 
-class _ChatConversationScreen extends StatefulWidget {
-  final _Thread thread;
-  const _ChatConversationScreen({super.key, required this.thread});
+class ChatConversationScreen extends StatefulWidget {
+  final Channel channel;
+  const ChatConversationScreen({super.key, required this.channel});
 
   @override
-  State<_ChatConversationScreen> createState() =>
-      _ChatConversationScreenState();
+  State<ChatConversationScreen> createState() => _ChatConversationScreenState();
 }
 
-class _ChatConversationScreenState
-    extends State<_ChatConversationScreen> {
+class _ChatConversationScreenState extends State<ChatConversationScreen> {
   static const orange = Color(0xFFF68B1F);
   final _ctrl = TextEditingController();
   final _scrollCtrl = ScrollController();
+  late final Future<void> _watchFuture;
+  String? _lastMarkedMessageId;
 
-  final List<_ChatMessage> _messages = [
-    const _ChatMessage(
-        text: "Hi! I just attended Charlie's grooming session today. It was amazing! Thank you for choosing Charlie for our service.",
-        isMe: false,
-        time: '10:02 AM'),
-    const _ChatMessage(
-        text: "It was such a goodbye today 🐾",
-        isMe: false,
-        time: '10:03 AM'),
-    const _ChatMessage(
-        text: "Thank you Sarah! Charlie really enjoyed it. See you next month!",
-        isMe: true,
-        time: '10:15 AM'),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _watchFuture = _watchChannel();
+  }
+
+  Future<void> _watchChannel() async {
+    await widget.channel.watch(
+      messagesPagination: const PaginationParams(limit: 40),
+    );
+    await _markRead();
+  }
+
+  Future<void> _markRead() async {
+    final messages = widget.channel.state?.messages ?? const <Message>[];
+    final lastId = messages.isNotEmpty ? messages.last.id : null;
+    if (_lastMarkedMessageId == lastId) return;
+    _lastMarkedMessageId = lastId;
+    await _markChannelRead(widget.channel);
+  }
 
   @override
   void dispose() {
@@ -283,16 +317,11 @@ class _ChatConversationScreenState
     super.dispose();
   }
 
-  void _send() {
+  Future<void> _send() async {
     final text = _ctrl.text.trim();
     if (text.isEmpty) return;
-    setState(() {
-      _messages.add(_ChatMessage(
-          text: text,
-          isMe: true,
-          time: TimeOfDay.now().format(context)));
-    });
     _ctrl.clear();
+    await widget.channel.sendMessage(Message(text: text));
     Future.delayed(const Duration(milliseconds: 100), () {
       if (_scrollCtrl.hasClients) {
         _scrollCtrl.animateTo(
@@ -306,6 +335,8 @@ class _ChatConversationScreenState
 
   @override
   Widget build(BuildContext context) {
+    final otherUser = _otherUser(widget.channel);
+    final isVerifiedProvider = _isVerifiedProvider(widget.channel, otherUser);
     return Scaffold(
       backgroundColor: const Color(0xFFF6F7FB),
       appBar: AppBar(
@@ -314,100 +345,246 @@ class _ChatConversationScreenState
         titleSpacing: 0,
         title: Row(
           children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(20),
-              child: Image.network(
-                widget.thread.providerImage,
-                width: 38,
-                height: 38,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Container(
-                  width: 38,
-                  height: 38,
-                  color: const Color(0xFFF3F4F6),
-                  child: const Icon(Icons.person, color: Color(0xFF9CA3AF)),
-                ),
-              ),
-            ),
+            _AvatarImage(user: otherUser, size: 38),
             const SizedBox(width: 10),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(widget.thread.providerName,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w900,
-                        fontSize: 14,
-                        color: Color(0xFF111827))),
-                const Text('Online',
-                    style: TextStyle(
-                        fontSize: 11,
-                        color: Color(0xFF10B981),
-                        fontWeight: FontWeight.w600)),
+                Text(
+                  _conversationName(widget.channel, otherUser),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 14,
+                    color: Color(0xFF111827),
+                  ),
+                ),
+                Text(
+                  otherUser?.online == true ? 'Online' : 'Offline',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: otherUser?.online == true
+                        ? const Color(0xFF10B981)
+                        : const Color(0xFF9CA3AF),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ],
             ),
           ],
         ),
         actions: [
           IconButton(onPressed: () {}, icon: const Icon(Icons.call_outlined)),
-          IconButton(
-              onPressed: () {}, icon: const Icon(Icons.more_vert)),
+          IconButton(onPressed: () {}, icon: const Icon(Icons.more_vert)),
         ],
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: ListView.builder(
-              controller: _scrollCtrl,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              itemCount: _messages.length,
-              itemBuilder: (_, i) => _Bubble(msg: _messages[i]),
-            ),
-          ),
-          // Input bar
-          Container(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              border: Border(
-                  top: BorderSide(color: Colors.black.withOpacity(0.06))),
-            ),
-            child: SafeArea(
-              top: false,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _ctrl,
-                      style: const TextStyle(fontSize: 14),
-                      decoration: InputDecoration(
-                        hintText: 'Type a message...',
-                        filled: true,
-                        fillColor: const Color(0xFFF3F4F6),
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 10),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                          borderSide: BorderSide.none,
+      body: FutureBuilder<void>(
+        future: _watchFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          return Column(
+            children: [
+              _SafetyCheckBanner(isVerified: isVerifiedProvider),
+              if (!isVerifiedProvider) const _UnverifiedProviderWarning(),
+              Expanded(
+                child: StreamBuilder<List<Message>>(
+                  stream: widget.channel.state?.messagesStream,
+                  initialData: widget.channel.state?.messages,
+                  builder: (context, snapshot) {
+                    final messages = snapshot.data ?? const <Message>[];
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) _markRead();
+                    });
+                    return ListView.builder(
+                      controller: _scrollCtrl,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      itemCount: messages.length,
+                      itemBuilder: (_, i) => _Bubble(message: messages[i]),
+                    );
+                  },
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  border: Border(
+                    top: BorderSide(color: Colors.black.withOpacity(0.06)),
+                  ),
+                ),
+                child: SafeArea(
+                  top: false,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _ctrl,
+                          style: const TextStyle(fontSize: 14),
+                          decoration: InputDecoration(
+                            hintText: 'Type a message...',
+                            filled: true,
+                            fillColor: const Color(0xFFF3F4F6),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 10,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(24),
+                              borderSide: BorderSide.none,
+                            ),
+                          ),
+                          onSubmitted: (_) => _send(),
                         ),
                       ),
-                      onSubmitted: (_) => _send(),
-                    ),
+                      const SizedBox(width: 8),
+                      GestureDetector(
+                        onTap: _send,
+                        child: Container(
+                          width: 42,
+                          height: 42,
+                          decoration: const BoxDecoration(
+                            color: orange,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.send_rounded,
+                            color: Colors.white,
+                            size: 18,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 8),
-                  GestureDetector(
-                    onTap: _send,
-                    child: Container(
-                      width: 42,
-                      height: 42,
-                      decoration: const BoxDecoration(
-                          color: orange, shape: BoxShape.circle),
-                      child: const Icon(Icons.send_rounded,
-                          color: Colors.white, size: 18),
-                    ),
-                  ),
-                ],
+                ),
               ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _SafetyCheckBanner extends StatelessWidget {
+  final bool isVerified;
+
+  const _SafetyCheckBanner({required this.isVerified});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Text(
+        'Safety Check\nYou are chatting with a ${isVerified ? 'Verified' : 'Unverified'} provider.\n1. Meet in a public space before sharing your home address.\n2. If unverified, ask for an ID copy or pet-care reference.\n3. Share your vet contact before service starts.\n4. Keep coordination in this chat for your protection.',
+        style: const TextStyle(
+          fontSize: 12,
+          height: 1.35,
+          color: Color(0xFF374151),
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+class _UnverifiedProviderWarning extends StatelessWidget {
+  const _UnverifiedProviderWarning();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF3CD),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFF59E0B)),
+      ),
+      child: const Text(
+        'Identity Not Verified\nThis provider has not completed our security check. For your pet\'s safety, request a video call and meet in a public park before booking.',
+        style: TextStyle(
+          fontSize: 12,
+          height: 1.35,
+          color: Color(0xFF7C2D12),
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+class _Bubble extends StatelessWidget {
+  final Message message;
+  const _Bubble({required this.message});
+
+  static const orange = Color(0xFFF68B1F);
+
+  @override
+  Widget build(BuildContext context) {
+    final isMe =
+        message.user?.id == BooStreamChatService.instance.currentUserId;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        mainAxisAlignment:
+            isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Flexible(
+            child: Column(
+              crossAxisAlignment:
+                  isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              children: [
+                Container(
+                  constraints: BoxConstraints(
+                    maxWidth: MediaQuery.of(context).size.width * 0.72,
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isMe ? orange : Colors.white,
+                    borderRadius: BorderRadius.only(
+                      topLeft: const Radius.circular(18),
+                      topRight: const Radius.circular(18),
+                      bottomLeft: Radius.circular(isMe ? 18 : 4),
+                      bottomRight: Radius.circular(isMe ? 4 : 18),
+                    ),
+                    border: isMe
+                        ? null
+                        : Border.all(color: const Color(0xFFEAECEF)),
+                  ),
+                  child: Text(
+                    message.text ?? '',
+                    style: TextStyle(
+                      color: isMe ? Colors.white : const Color(0xFF111827),
+                      fontSize: 14,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _clockTime(message.createdAt),
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFF9CA3AF),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -416,63 +593,146 @@ class _ChatConversationScreenState
   }
 }
 
-class _Bubble extends StatelessWidget {
-  final _ChatMessage msg;
-  const _Bubble({required this.msg});
+class _AvatarImage extends StatelessWidget {
+  final User? user;
+  final double size;
 
-  static const orange = Color(0xFFF68B1F);
+  const _AvatarImage({required this.user, required this.size});
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Row(
-        mainAxisAlignment:
-            msg.isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.end,
+    final image = user?.image;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(size / 2),
+      child: image != null
+          ? Image.network(
+              image,
+              width: size,
+              height: size,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) =>
+                  _AvatarFallback(user: user, size: size),
+            )
+          : _AvatarFallback(user: user, size: size),
+    );
+  }
+}
+
+class _AvatarFallback extends StatelessWidget {
+  final User? user;
+  final double size;
+
+  const _AvatarFallback({required this.user, required this.size});
+
+  @override
+  Widget build(BuildContext context) {
+    final name = user?.name ?? '?';
+    return Container(
+      width: size,
+      height: size,
+      color: const Color(0xFFF3F4F6),
+      child: Center(
+        child: Text(
+          name.isNotEmpty ? name[0].toUpperCase() : '?',
+          style: const TextStyle(
+            color: Color(0xFFF68B1F),
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  final String title;
+  final String message;
+
+  const _EmptyState({required this.title, required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Flexible(
-            child: Column(
-              crossAxisAlignment: msg.isMe
-                  ? CrossAxisAlignment.end
-                  : CrossAxisAlignment.start,
-              children: [
-                Container(
-                  constraints: BoxConstraints(
-                      maxWidth: MediaQuery.of(context).size.width * 0.72),
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: msg.isMe ? orange : Colors.white,
-                    borderRadius: BorderRadius.only(
-                      topLeft: const Radius.circular(18),
-                      topRight: const Radius.circular(18),
-                      bottomLeft: Radius.circular(msg.isMe ? 18 : 4),
-                      bottomRight: Radius.circular(msg.isMe ? 4 : 18),
-                    ),
-                    border: msg.isMe
-                        ? null
-                        : Border.all(color: const Color(0xFFEAECEF)),
-                  ),
-                  child: Text(
-                    msg.text,
-                    style: TextStyle(
-                      color:
-                          msg.isMe ? Colors.white : const Color(0xFF111827),
-                      fontSize: 14,
-                      height: 1.35,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(msg.time,
-                    style: const TextStyle(
-                        fontSize: 11, color: Color(0xFF9CA3AF))),
-              ],
+          Icon(Icons.chat_bubble_outline_rounded,
+              size: 52, color: Colors.grey.shade300),
+          const SizedBox(height: 16),
+          Text(
+            title,
+            style: const TextStyle(
+              fontWeight: FontWeight.w600,
+              color: Colors.black54,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13,
+              color: Colors.grey.shade400,
+              height: 1.5,
             ),
           ),
         ],
       ),
     );
   }
+}
+
+User? _otherUser(Channel channel) {
+  final currentUserId = BooStreamChatService.instance.currentUserId;
+  final members = channel.state?.members ?? const <Member>[];
+  for (final member in members) {
+    final user = member.user;
+    if (user != null && user.id != currentUserId) return user;
+  }
+  return members.isNotEmpty ? members.first.user : null;
+}
+
+Message? _lastMessage(Channel channel) {
+  final messages = channel.state?.messages ?? const <Message>[];
+  if (messages.isEmpty) return null;
+  return messages.last;
+}
+
+String _conversationName(Channel channel, User? otherUser) {
+  return channel.name ?? otherUser?.name ?? 'Conversation';
+}
+
+bool _isVerifiedProvider(Channel channel, User? otherUser) {
+  final userExtra = otherUser?.extraData ?? const <String, Object?>{};
+  final channelExtra = channel.extraData;
+  final values = [
+    userExtra['isVerified'],
+    userExtra['is_verified'],
+    userExtra['verificationStatus'],
+    userExtra['verification_status'],
+    channelExtra['provider_is_verified'],
+    channelExtra['providerVerificationStatus'],
+    channelExtra['provider_verification_status'],
+  ];
+  return values.any(
+      (value) => value == true || value == 'approved' || value == 'verified');
+}
+
+String _relativeTime(DateTime? value) {
+  if (value == null) return '';
+  final local = value.toLocal();
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final date = DateTime(local.year, local.month, local.day);
+  if (date == today) return 'Today';
+  if (date == today.subtract(const Duration(days: 1))) return 'Yesterday';
+  return '${local.month}/${local.day}';
+}
+
+String _clockTime(DateTime value) {
+  final local = value.toLocal();
+  final hour = local.hour % 12 == 0 ? 12 : local.hour % 12;
+  final minute = local.minute.toString().padLeft(2, '0');
+  final suffix = local.hour >= 12 ? 'PM' : 'AM';
+  return '$hour:$minute $suffix';
 }

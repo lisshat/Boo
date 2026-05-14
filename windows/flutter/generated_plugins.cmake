@@ -3,8 +3,18 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  connectivity_plus
+  desktop_drop
+  file_selector_windows
   flutter_secure_storage_windows
+  gal
   geolocator_windows
+  media_kit_video
+  printing
+  record_windows
+  share_plus
+  thumblr_windows
+  url_launcher_windows
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST

@@ -1,8 +1,14 @@
 import 'package:boo/screens/pet_owner/book_appointment_screen.dart';
+import 'package:boo/screens/pet_owner/chat_page.dart';
+import 'package:boo/services/favorites_service.dart';
+import 'package:boo/services/reviews_service.dart';
+import 'package:boo/services/stream_chat_service.dart';
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../models/provider_models.dart';
 
-class ProviderProfileScreen extends StatelessWidget {
+class ProviderProfileScreen extends StatefulWidget {
   final ProviderModel provider;
 
   const ProviderProfileScreen({
@@ -10,8 +16,140 @@ class ProviderProfileScreen extends StatelessWidget {
     required this.provider,
   });
 
+  @override
+  State<ProviderProfileScreen> createState() => _ProviderProfileScreenState();
+}
+
+class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
   static const Color booOrange = Color(0xFFF68B1F);
   static const Color bg = Color(0xFFF6F7FB);
+
+  late bool _isFav;
+  List<ReviewModel> _reviews = [];
+  bool _openingChat = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _isFav = FavoritesManager.instance.isFav(widget.provider.id);
+    _loadReviews();
+  }
+
+  Future<void> _loadReviews() async {
+    final reviews =
+        await ReviewsService.instance.getProviderReviews(widget.provider.id);
+    if (mounted) setState(() => _reviews = reviews);
+  }
+
+  double get _liveRating => _reviews.isEmpty
+      ? widget.provider.rating
+      : _reviews.map((r) => r.rating).reduce((a, b) => a + b) / _reviews.length;
+
+  int get _liveReviewCount =>
+      _reviews.isNotEmpty ? _reviews.length : widget.provider.reviewCount;
+
+  void _toggleFav() {
+    final nowFav = FavoritesManager.instance.toggle(widget.provider.id);
+    setState(() => _isFav = nowFav);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          nowFav
+              ? '${widget.provider.name} saved to favorites'
+              : 'Removed from favorites',
+        ),
+        duration: const Duration(seconds: 2),
+        backgroundColor: nowFav ? booOrange : const Color(0xFF6B7280),
+      ),
+    );
+  }
+
+  void _share() {
+    final p = widget.provider;
+    final serviceLines = p.services
+        .where((s) => s.enabled)
+        .map((s) => '• ${s.title} – ${s.priceLabel}')
+        .join('\n');
+    final text = '${p.name} on Boo 🐾\n'
+        '${_providerTypeLabel(p.type)} in ${p.locationName}\n'
+        '⭐ ${p.rating.toStringAsFixed(1)} (${p.reviewCount} reviews)\n\n'
+        '${serviceLines.isNotEmpty ? "Services:\n$serviceLines\n\n" : ""}'
+        'Book them on the Boo app!';
+    SharePlus.instance.share(ShareParams(text: text));
+  }
+
+  Future<void> _messageProvider() async {
+    if (_openingChat) return;
+    final providerUserId = widget.provider.userId;
+    if (providerUserId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Messaging is unavailable for this provider.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _openingChat = true);
+    try {
+      final streamService = BooStreamChatService.instance;
+      final connected = await streamService.connectFromStoredSession();
+      final currentUserId = streamService.currentUserId;
+      if (!connected || currentUserId == null) {
+        throw Exception('Chat is unavailable. Please log in again.');
+      }
+
+      final members = [currentUserId, providerUserId]..sort();
+      final channel = streamService.client.channel(
+        'messaging',
+        extraData: {
+          'members': members,
+          'name': widget.provider.name,
+          'provider_id': widget.provider.id,
+        },
+      );
+      await channel.watch();
+
+      if (!mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ChatConversationScreen(channel: channel),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) setState(() => _openingChat = false);
+    }
+  }
+
+  Future<void> _openMap() async {
+    final provider = widget.provider;
+    final Uri uri;
+    if (provider.latitude != null && provider.longitude != null) {
+      uri = Uri.parse(
+        'https://www.google.com/maps/search/?api=1&query=${provider.latitude},${provider.longitude}',
+      );
+    } else {
+      final query = Uri.encodeComponent(
+        [provider.addressLine, provider.locationName]
+            .where((part) => part.trim().isNotEmpty)
+            .join(', '),
+      );
+      uri = Uri.parse('https://www.google.com/maps/search/?api=1&query=$query');
+    }
+
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open maps')),
+      );
+    }
+  }
 
   String _providerTypeLabel(ProviderType t) {
     switch (t) {
@@ -54,7 +192,7 @@ class ProviderProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final typeLabel = _providerTypeLabel(provider.type);
+    final typeLabel = _providerTypeLabel(widget.provider.type);
 
     return Scaffold(
       backgroundColor: bg,
@@ -67,13 +205,22 @@ class ProviderProfileScreen extends StatelessWidget {
         ),
         actions: [
           IconButton(
-            tooltip: "Favorite",
-            onPressed: () {},
-            icon: const Icon(Icons.favorite_border),
+            tooltip: _isFav ? "Remove from favorites" : "Save to favorites",
+            onPressed: _toggleFav,
+            icon: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              transitionBuilder: (child, anim) =>
+                  ScaleTransition(scale: anim, child: child),
+              child: Icon(
+                _isFav ? Icons.favorite : Icons.favorite_border,
+                key: ValueKey(_isFav),
+                color: _isFav ? Colors.red : null,
+              ),
+            ),
           ),
           IconButton(
             tooltip: "Share",
-            onPressed: () {},
+            onPressed: _share,
             icon: const Icon(Icons.ios_share_rounded),
           ),
         ],
@@ -82,17 +229,45 @@ class ProviderProfileScreen extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 110),
           children: [
-            ProviderHeaderCard(provider: provider),
+            ProviderHeaderCard(
+              provider: widget.provider,
+              liveRating: _liveRating,
+              liveReviewCount: _liveReviewCount,
+            ),
+            if (!widget.provider.isVerified) ...[
+              const SizedBox(height: 10),
+              const _UnverifiedProviderWarning(),
+            ],
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: _openingChat ? null : _messageProvider,
+              icon: _openingChat
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.chat_bubble_outline_rounded),
+              label: const Text('Message provider'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: booOrange,
+                side: const BorderSide(color: booOrange),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+            ),
             const SizedBox(height: 12),
             TrustBadgesRow(
-              badges: provider.trustBadges,
-              isVerified: provider.isVerified,
+              badges: widget.provider.trustBadges,
+              isVerified: widget.provider.isVerified,
             ),
             const SizedBox(height: 16),
             SectionTitle(title: "About"),
             const SizedBox(height: 8),
             Text(
-              provider.about,
+              widget.provider.about,
               style: const TextStyle(
                 color: Color(0xFF4B5563),
                 height: 1.35,
@@ -101,17 +276,17 @@ class ProviderProfileScreen extends StatelessWidget {
             const SizedBox(height: 16),
             SectionTitle(title: "Services & Pricing"),
             const SizedBox(height: 10),
-            ...provider.services.map(
+            ...widget.provider.services.map(
               (s) => Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: ServiceCard(
-                  icon: _serviceIcon(provider.type),
+                  icon: _serviceIcon(widget.provider.type),
                   service: s,
                   onTap: s.enabled
                       ? () {
                           Navigator.of(context).push(MaterialPageRoute(
                             builder: (_) => BookAppointmentScreen(
-                              provider: provider,
+                              provider: widget.provider,
                               service: s,
                             ),
                           ));
@@ -124,11 +299,9 @@ class ProviderProfileScreen extends StatelessWidget {
             SectionTitle(title: "Location"),
             const SizedBox(height: 10),
             LocationCard(
-              locationName: provider.locationName,
-              addressLine: provider.addressLine,
-              onViewMap: () {
-                // MVP: open map later
-              },
+              locationName: widget.provider.locationName,
+              addressLine: widget.provider.addressLine,
+              onViewMap: _openMap,
             ),
             const SizedBox(height: 16),
             SectionTitle(
@@ -139,7 +312,7 @@ class ProviderProfileScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 8),
-            ReviewPreviewCard(provider: provider),
+            ReviewPreviewCard(reviews: _reviews),
             const SizedBox(height: 8),
           ],
         ),
@@ -152,7 +325,7 @@ class ProviderProfileScreen extends StatelessWidget {
           decoration: BoxDecoration(
             color: Colors.white,
             border: Border(
-              top: BorderSide(color: Colors.black.withOpacity(0.06)),
+              top: BorderSide(color: Colors.black.withValues(alpha: 0.06)),
             ),
           ),
           child: Row(
@@ -160,13 +333,13 @@ class ProviderProfileScreen extends StatelessWidget {
               Expanded(
                 child: ElevatedButton(
                   onPressed: () {
-                    final first = provider.services
+                    final first = widget.provider.services
                         .where((s) => s.enabled)
                         .toList();
                     if (first.isEmpty) return;
                     Navigator.of(context).push(MaterialPageRoute(
                       builder: (_) => BookAppointmentScreen(
-                        provider: provider,
+                        provider: widget.provider,
                         service: first.first,
                       ),
                     ));
@@ -180,7 +353,7 @@ class ProviderProfileScreen extends StatelessWidget {
                     ),
                   ),
                   child: Text(
-                    _ctaLabel(provider.type),
+                    _ctaLabel(widget.provider.type),
                     style: const TextStyle(fontWeight: FontWeight.w800),
                   ),
                 ),
@@ -195,8 +368,15 @@ class ProviderProfileScreen extends StatelessWidget {
 
 class ProviderHeaderCard extends StatelessWidget {
   final ProviderModel provider;
+  final double? liveRating;
+  final int? liveReviewCount;
 
-  const ProviderHeaderCard({super.key, required this.provider});
+  const ProviderHeaderCard({
+    super.key,
+    required this.provider,
+    this.liveRating,
+    this.liveReviewCount,
+  });
 
   static const Color booOrange = Color(0xFFF68B1F);
 
@@ -210,7 +390,7 @@ class ProviderHeaderCard extends StatelessWidget {
         border: Border.all(color: const Color(0xFFEAECEF)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 18,
             offset: const Offset(0, 10),
           ),
@@ -258,7 +438,7 @@ class ProviderHeaderCard extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 10, vertical: 6),
                         decoration: BoxDecoration(
-                          color: booOrange.withOpacity(0.12),
+                          color: booOrange.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(999),
                         ),
                         child: const Text(
@@ -280,12 +460,12 @@ class ProviderHeaderCard extends StatelessWidget {
                         size: 18, color: Color(0xFFF59E0B)),
                     const SizedBox(width: 4),
                     Text(
-                      provider.rating.toStringAsFixed(1),
+                      (liveRating ?? provider.rating).toStringAsFixed(1),
                       style: const TextStyle(fontWeight: FontWeight.w800),
                     ),
                     const SizedBox(width: 6),
                     Text(
-                      "(${provider.reviewCount})",
+                      "(${liveReviewCount ?? provider.reviewCount})",
                       style: const TextStyle(color: Color(0xFF6B7280)),
                     ),
                   ],
@@ -330,7 +510,7 @@ class TrustBadgesRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final all = <String>[
-      if (isVerified) "Boo Verified",
+      if (isVerified) "Verified Professional" else "Standard Profile",
       ...badges,
     ];
 
@@ -349,7 +529,7 @@ class TrustBadgesRow extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(Icons.verified_rounded,
-                  size: 16, color: booOrange.withOpacity(0.9)),
+                  size: 16, color: booOrange.withValues(alpha: 0.9)),
               const SizedBox(width: 6),
               Text(
                 b,
@@ -363,6 +543,32 @@ class TrustBadgesRow extends StatelessWidget {
           ),
         );
       }).toList(),
+    );
+  }
+}
+
+class _UnverifiedProviderWarning extends StatelessWidget {
+  const _UnverifiedProviderWarning();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF3CD),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFF59E0B)),
+      ),
+      child: const Text(
+        'Identity Not Verified\nThis provider has not completed our security check. For your pet\'s safety, request a video call and meet in a public park before booking.',
+        style: TextStyle(
+          fontSize: 12,
+          height: 1.35,
+          color: Color(0xFF7C2D12),
+          fontWeight: FontWeight.w700,
+        ),
+      ),
     );
   }
 }
@@ -439,7 +645,7 @@ class ServiceCard extends StatelessWidget {
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: booOrange.withOpacity(0.12),
+                color: booOrange.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Icon(icon, color: booOrange),
@@ -556,13 +762,13 @@ class LocationCard extends StatelessWidget {
 }
 
 class ReviewPreviewCard extends StatelessWidget {
-  final ProviderModel provider;
-  const ReviewPreviewCard({super.key, required this.provider});
+  final List<ReviewModel> reviews;
+  const ReviewPreviewCard({super.key, required this.reviews});
 
   @override
   Widget build(BuildContext context) {
-    final hasReviews = provider.reviews.isNotEmpty;
-    final top = hasReviews ? provider.reviews.first : null;
+    final hasReviews = reviews.isNotEmpty;
+    final top = hasReviews ? reviews.first : null;
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -578,20 +784,20 @@ class ReviewPreviewCard extends StatelessWidget {
                 Row(
                   children: [
                     Text(
-                      top!.reviewerName,
+                      top!.ownerName,
                       style: const TextStyle(fontWeight: FontWeight.w900),
                     ),
                     const Spacer(),
                     const Icon(Icons.star_rounded,
                         size: 18, color: Color(0xFFF59E0B)),
                     const SizedBox(width: 4),
-                    Text(top.rating.toStringAsFixed(1),
+                    Text('${top.rating}',
                         style: const TextStyle(fontWeight: FontWeight.w800)),
                   ],
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  top.comment,
+                  top.text ?? '',
                   style:
                       const TextStyle(color: Color(0xFF4B5563), height: 1.35),
                 ),

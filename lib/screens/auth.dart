@@ -1,5 +1,6 @@
 import 'package:boo/screens/pet_owner/onboarding/owner_onboarding_step1.dart';
 import 'package:boo/screens/pet_owner_shell.dart';
+import 'package:boo/screens/admin/admin_shell.dart';
 import 'package:boo/screens/pet_provider/onboarding/provider_onboarding_step1.dart';
 import 'package:boo/screens/pet_provider/provider_shell.dart';
 import 'package:boo/services/auth_service.dart';
@@ -16,17 +17,34 @@ class BooAuthScreen extends StatefulWidget {
 
 class _BooAuthScreenState extends State<BooAuthScreen> {
   bool isLogin = true;
+  late String _selectedRole;
 
   final _formKey = GlobalKey<FormState>();
-  final _fullNameCtrl = TextEditingController();
+  final _firstNameCtrl = TextEditingController();
+  final _lastNameCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
   bool _obscure = true;
   bool _loading = false;
 
   @override
+  void initState() {
+    super.initState();
+    _selectedRole = widget.role;
+  }
+
+  void _clearForm() {
+    _firstNameCtrl.clear();
+    _lastNameCtrl.clear();
+    _emailCtrl.clear();
+    _passwordCtrl.clear();
+    _formKey.currentState?.reset();
+  }
+
+  @override
   void dispose() {
-    _fullNameCtrl.dispose();
+    _firstNameCtrl.dispose();
+    _lastNameCtrl.dispose();
     _emailCtrl.dispose();
     _passwordCtrl.dispose();
     super.dispose();
@@ -46,8 +64,10 @@ class _BooAuthScreenState extends State<BooAuthScreen> {
         : await AuthService.instance.register(
             email,
             password,
-            fullName: _fullNameCtrl.text.trim(),
-            role: widget.role,
+            fullName:
+                '${_firstNameCtrl.text.trim()} ${_lastNameCtrl.text.trim()}'
+                    .trim(),
+            role: _selectedRole,
           );
 
     if (!mounted) return;
@@ -94,7 +114,7 @@ class _BooAuthScreenState extends State<BooAuthScreen> {
                       borderRadius: BorderRadius.circular(14),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.08),
+                          color: Colors.black.withValues(alpha: 0.08),
                           blurRadius: 12,
                           offset: const Offset(0, 6),
                         ),
@@ -113,7 +133,11 @@ class _BooAuthScreenState extends State<BooAuthScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    widget.role == 'provider' ? 'Provider Access' : 'Pet Owner Access',
+                    isLogin
+                        ? 'Welcome back'
+                        : (_selectedRole == 'provider'
+                            ? 'Service Provider Account'
+                            : 'Pet Owner Account'),
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: const Color(0xFF6B7280),
                         ),
@@ -130,7 +154,7 @@ class _BooAuthScreenState extends State<BooAuthScreen> {
                       border: Border.all(color: const Color(0xFFEAECEF)),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.04),
+                          color: Colors.black.withValues(alpha: 0.04),
                           blurRadius: 18,
                           offset: const Offset(0, 10),
                         ),
@@ -140,7 +164,10 @@ class _BooAuthScreenState extends State<BooAuthScreen> {
                       children: [
                         _AuthToggle(
                           isLogin: isLogin,
-                          onChanged: (val) => setState(() => isLogin = val),
+                          onChanged: (val) => setState(() {
+                            isLogin = val;
+                            _clearForm();
+                          }),
                           activeColor: orange,
                         ),
                         const SizedBox(height: 16),
@@ -150,16 +177,85 @@ class _BooAuthScreenState extends State<BooAuthScreen> {
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               if (!isLogin) ...[
-                                _Label("FULL NAME"),
-                                const SizedBox(height: 6),
-                                _Input(
-                                  controller: _fullNameCtrl,
-                                  hintText: "e.g. Imani Wanjiku",
-                                  keyboardType: TextInputType.name,
-                                  validator: (v) {
-                                    if ((v ?? '').trim().isEmpty) return 'Full name is required';
-                                    return null;
-                                  },
+                                // Role selector
+                                Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFF3F4F6),
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: _TogglePill(
+                                          label: "Pet Owner 🐾",
+                                          active: _selectedRole == 'owner',
+                                          activeColor: orange,
+                                          onTap: () => setState(() {
+                                            _selectedRole = 'owner';
+                                            _clearForm();
+                                          }),
+                                        ),
+                                      ),
+                                      Expanded(
+                                        child: _TogglePill(
+                                          label: "Provider 🛠️",
+                                          active: _selectedRole == 'provider',
+                                          activeColor: orange,
+                                          onTap: () => setState(() {
+                                            _selectedRole = 'provider';
+                                            _clearForm();
+                                          }),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 14),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          _Label("FIRST NAME"),
+                                          const SizedBox(height: 6),
+                                          _Input(
+                                            controller: _firstNameCtrl,
+                                            hintText: "First",
+                                            keyboardType: TextInputType.name,
+                                            validator: (v) {
+                                              if ((v ?? '').trim().isEmpty)
+                                                return 'Required';
+                                              return null;
+                                            },
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          _Label("LAST NAME"),
+                                          const SizedBox(height: 6),
+                                          _Input(
+                                            controller: _lastNameCtrl,
+                                            hintText: "Last",
+                                            keyboardType: TextInputType.name,
+                                            validator: (v) {
+                                              if ((v ?? '').trim().isEmpty)
+                                                return 'Required';
+                                              return null;
+                                            },
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
                                 ),
                                 const SizedBox(height: 12),
                               ],
@@ -172,8 +268,12 @@ class _BooAuthScreenState extends State<BooAuthScreen> {
                                 validator: (v) {
                                   final value = (v ?? "").trim();
                                   if (value.isEmpty) return "Email is required";
-                                  if (!value.contains("@"))
+                                  final parts = value.split('@');
+                                  if (parts.length != 2 ||
+                                      parts[0].isEmpty ||
+                                      !parts[1].contains('.')) {
                                     return "Enter a valid email";
+                                  }
                                   return null;
                                 },
                               ),
@@ -208,15 +308,17 @@ class _BooAuthScreenState extends State<BooAuthScreen> {
 
                               const SizedBox(height: 8),
 
-                              Align(
-                                alignment: Alignment.centerRight,
-                                child: TextButton(
-                                  onPressed: () {
-                                    // TODO: navigate to forgot password screen
-                                  },
-                                  child: const Text("Forgot password?"),
+                              if (isLogin) ...[
+                                const SizedBox(height: 8),
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: TextButton(
+                                    onPressed: () => Navigator.of(context)
+                                        .pushNamed('/forgot-password'),
+                                    child: const Text("Forgot password?"),
+                                  ),
                                 ),
-                              ),
+                              ],
 
                               const SizedBox(height: 2),
 
@@ -248,101 +350,6 @@ class _BooAuthScreenState extends State<BooAuthScreen> {
                               ),
 
                               const SizedBox(height: 14),
-
-                              // Divider text
-                              Row(
-                                children: const [
-                                  Expanded(child: Divider()),
-                                  Padding(
-                                    padding:
-                                        EdgeInsets.symmetric(horizontal: 10),
-                                    child: Text(
-                                      "OR CONTINUE WITH",
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        letterSpacing: 0.6,
-                                        color: Color(0xFF9CA3AF),
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                  ),
-                                  Expanded(child: Divider()),
-                                ],
-                              ),
-
-                              const SizedBox(height: 12),
-
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: _SocialButton(
-                                      label: "Google",
-                                      icon: Icons
-                                          .g_mobiledata, // placeholder icon
-                                      onTap: () {
-                                        // TODO: Google sign-in flow (Supabase OAuth)
-                                      },
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: _SocialButton(
-                                      label: "Apple",
-                                      icon: Icons.apple,
-                                      onTap: () {
-                                        // TODO: Apple sign-in flow (if needed)
-                                      },
-                                    ),
-                                  ),
-                                ],
-                              ),
-
-                              const SizedBox(height: 14),
-
-                              if (widget.role == 'owner')
-                                Center(
-                                  child: Column(
-                                    children: [
-                                      Text(
-                                        "Looking to offer your services?",
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .bodySmall
-                                            ?.copyWith(
-                                              color: const Color(0xFF6B7280),
-                                            ),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      OutlinedButton(
-                                        onPressed: () {
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (_) => const BooAuthScreen(role: 'provider'),
-                                            ),
-                                          );
-                                        },
-                                        style: OutlinedButton.styleFrom(
-                                          foregroundColor: orange,
-                                          side: const BorderSide(color: orange),
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 14, vertical: 10),
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(14),
-                                          ),
-                                        ),
-                                        child: const Text(
-                                          "Are you a provider? Login here",
-                                          style: TextStyle(
-                                              fontWeight: FontWeight.w700),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-
-                              const SizedBox(height: 12),
 
                               // Terms
                               Text(
@@ -521,62 +528,60 @@ class _Input extends StatelessWidget {
   }
 }
 
-class _SocialButton extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final VoidCallback onTap;
-
-  const _SocialButton({
-    required this.label,
-    required this.icon,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return OutlinedButton.icon(
-      onPressed: onTap,
-      style: OutlinedButton.styleFrom(
-        foregroundColor: const Color(0xFF111827),
-        side: const BorderSide(color: Color(0xFFE5E7EB)),
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-        ),
-        backgroundColor: Colors.white,
-      ),
-      icon: Icon(icon, size: 18, color: const Color(0xFF111827)),
-      label: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
-    );
-  }
+enum _Destination {
+  adminShell,
+  ownerShell,
+  ownerOnboarding,
+  providerShell,
+  providerOnboarding
 }
 
-/// Routes to the correct shell after a successful login/register,
-/// based on the role stored in secure storage.
+/// Routes to the correct shell after a successful login/register.
+/// For returning providers, verifies that a provider profile actually exists
+/// before sending to ProviderShell — re-routes to onboarding if it doesn't.
 class _PostAuthRedirect extends StatelessWidget {
   final bool isNewUser;
 
   const _PostAuthRedirect({this.isNewUser = false});
 
+  Future<_Destination> _decide() async {
+    final role = await AuthService.instance.getUserRole();
+    if (role == 'admin') return _Destination.adminShell;
+    if (role == 'owner') {
+      return isNewUser ? _Destination.ownerOnboarding : _Destination.ownerShell;
+    }
+    if (role == 'provider') {
+      if (isNewUser) return _Destination.providerOnboarding;
+      final res = await ApiService.instance.get('/providers/me');
+      return res.statusCode == 200
+          ? _Destination.providerShell
+          : _Destination.providerOnboarding;
+    }
+    return _Destination.ownerShell;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<String?>(
-      future: AuthService.instance.getUserRole(),
+    return FutureBuilder<_Destination>(
+      future: _decide(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           );
         }
-        final role = snapshot.data;
-        if (isNewUser && role == 'owner') {
-          return const OwnerOnboardingStep1();
+        switch (snapshot.data!) {
+          case _Destination.adminShell:
+            return const AdminShell();
+          case _Destination.ownerShell:
+            return const PetOwnerShell();
+          case _Destination.ownerOnboarding:
+            return const OwnerOnboardingStep1();
+          case _Destination.providerShell:
+            return const ProviderShell();
+          case _Destination.providerOnboarding:
+            return const ProviderOnboardingStep1();
         }
-        if (isNewUser && role == 'provider') {
-          return const ProviderOnboardingStep1();
-        }
-        if (role == 'provider') return const ProviderShell();
-        return const PetOwnerShell();
       },
     );
   }

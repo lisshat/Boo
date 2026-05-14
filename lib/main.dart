@@ -1,9 +1,17 @@
 import 'package:boo/models/provider_models.dart';
 import 'package:boo/screens/pet_owner_shell.dart';
 import 'package:boo/screens/auth.dart';
+import 'package:boo/screens/auth/forgot_password_screen.dart';
+import 'package:boo/screens/admin/admin_login_screen.dart';
+import 'package:boo/screens/admin/admin_shell.dart';
+import 'package:boo/screens/splash_screen.dart';
+import 'package:boo/screens/tip_loading_screen.dart';
 import 'package:boo/services/auth_service.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:boo/screens/pet_provider/provider_profile_screen.dart';
+import 'package:boo/screens/pet_provider/provider_shell.dart';
+import 'package:boo/services/stream_chat_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,11 +28,23 @@ class MyApp extends StatelessWidget {
       navigatorKey: navigatorKey,
       debugShowCheckedModeBanner: false,
       theme: ThemeData(useMaterial3: true),
-      home: const _AuthGate(),
+      home: kIsWeb
+          ? const AdminLoginScreen()
+          : const SplashScreen(next: _AuthGate()),
       routes: {
         '/login': (_) => const BooAuthScreen(),
+        '/forgot-password': (_) => const ForgotPasswordScreen(),
+        '/reset-password': (_) => const ResetPasswordScreen(),
+        '/admin-login': (_) => const AdminLoginScreen(),
+        '/admin': (_) => const AdminShell(),
       },
       onGenerateRoute: (settings) {
+        if (settings.name?.startsWith('/reset-password') == true) {
+          return MaterialPageRoute(
+            builder: (_) => const ResetPasswordScreen(),
+            settings: settings,
+          );
+        }
         if (settings.name == '/provider-profile') {
           final provider = settings.arguments as ProviderModel;
           return MaterialPageRoute(
@@ -46,25 +66,45 @@ class _AuthGate extends StatefulWidget {
 }
 
 class _AuthGateState extends State<_AuthGate> {
-  late Future<bool> _tokenFuture;
+  late Future<String?> _roleFuture;
 
   @override
   void initState() {
     super.initState();
-    _tokenFuture = AuthService.instance.hasValidToken();
+    _roleFuture = _getRole();
+  }
+
+  Future<String?> _getRole() async {
+    // Minimum 2.5s on tip screen so it doesn't flash past
+    final results = await Future.wait([
+      _checkAuth(),
+      Future.delayed(const Duration(milliseconds: 2500)),
+    ]);
+    return results[0] as String?;
+  }
+
+  Future<String?> _checkAuth() async {
+    final hasToken = await AuthService.instance.hasValidToken();
+    if (!hasToken) return null;
+    await BooStreamChatService.instance.connectFromStoredSession();
+    return AuthService.instance.getUserRole();
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<bool>(
-      future: _tokenFuture,
+    if (kIsWeb) return const AdminLoginScreen();
+
+    return FutureBuilder<String?>(
+      future: _roleFuture,
       builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const TipLoadingScreen();
         }
-        if (snapshot.data == true) return const PetOwnerShell();
+        final role = snapshot.data;
+        if (role == 'admin') return const AdminShell();
+        if (role == 'provider') return const ProviderShell();
+        if (role == 'owner') return const PetOwnerShell();
+        if (kIsWeb) return const AdminLoginScreen();
         return const BooAuthScreen();
       },
     );

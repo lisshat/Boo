@@ -9,6 +9,7 @@ class ProviderDemoList extends StatelessWidget {
     return [
       ProviderModel(
         id: "1aec8c16-daa0-4b4b-b92d-a250f07724ae",
+        userId: "",
         name: "Paws & Whiskers Boarding",
         type: ProviderType.boarding,
         imageUrl: "https://picsum.photos/200?random=31",
@@ -46,18 +47,11 @@ class ProviderDemoList extends StatelessWidget {
             durationMins: 15,
           ),
         ],
-        reviews: const [
-          ReviewModel(
-            id: "r1",
-            reviewerName: "Amina",
-            comment:
-                "My dog settled in quickly. I got updates and photos daily. Would book again!",
-            rating: 4.9,
-          ),
-        ],
+        reviews: const [],
       ),
       ProviderModel(
         id: "b6ce914a-245d-4951-9470-fb7df8e642fe",
+        userId: "",
         name: "Kipepeo Grooming Studio",
         type: ProviderType.groomer,
         imageUrl: "https://picsum.photos/200?random=22",
@@ -91,6 +85,7 @@ class ProviderDemoList extends StatelessWidget {
       ),
       ProviderModel(
         id: "0b61ffe2-c262-4b18-ba02-6be7044155f4",
+        userId: "",
         name: "Nia Pet Sitting",
         type: ProviderType.sitter,
         imageUrl: "https://picsum.photos/200?random=44",
@@ -120,15 +115,7 @@ class ProviderDemoList extends StatelessWidget {
             durationMins: 1440,
           ),
         ],
-        reviews: const [
-          ReviewModel(
-            id: "r2",
-            reviewerName: "Kevin",
-            comment:
-                "Very reliable. My cats were calm and fed properly. Easy communication.",
-            rating: 4.8,
-          ),
-        ],
+        reviews: const [],
       ),
     ];
   }
