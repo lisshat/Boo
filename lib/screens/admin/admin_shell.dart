@@ -35,13 +35,7 @@ class _AdminShellState extends State<AdminShell> {
             selected: _index,
             onSelected: (i) => setState(() => _index = i),
           ),
-          Expanded(
-            child: Column(
-              children: [
-                const _TopBar(),
-                Expanded(child: _pages[_index]),
-              ],
-            ),
+          Expanded(child: _pages[_index],
           ),
         ],
       ),
@@ -138,45 +132,3 @@ class _Sidebar extends StatelessWidget {
   }
 }
 
-class _TopBar extends StatelessWidget {
-  const _TopBar();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 58,
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      decoration: const BoxDecoration(
-        color: AdminColors.panel,
-        border: Border(bottom: BorderSide(color: AdminColors.line)),
-      ),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 360,
-            height: 34,
-            child: TextField(
-              decoration: InputDecoration(
-                hintText: 'Search bookings, providers, or users...',
-                prefixIcon: const Icon(Icons.search, size: 16),
-                isDense: true,
-                filled: true,
-                fillColor: const Color(0xFFFFF1E8),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(18),
-                  borderSide: BorderSide.none,
-                ),
-              ),
-            ),
-          ),
-          const Spacer(),
-          IconButton(onPressed: () {}, icon: const Icon(Icons.notifications_none)),
-          const SizedBox(width: 12),
-          const Text('Kenya\nPortal', style: TextStyle(fontSize: 11)),
-          const SizedBox(width: 8),
-          const CircleAvatar(radius: 15, child: Icon(Icons.person, size: 16)),
-        ],
-      ),
-    );
-  }
-}

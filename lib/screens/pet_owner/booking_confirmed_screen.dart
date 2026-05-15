@@ -1,9 +1,13 @@
 import 'package:boo/models/provider_models.dart';
 import 'package:boo/screens/pet_owner_shell.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class BookingConfirmedScreen {
   static const orange = Color(0xFFF68B1F);
+  static const _calendarChannel = MethodChannel('boo/calendar');
 
   static String _formatDate(DateTime dt) {
     const months = [
@@ -12,6 +16,91 @@ class BookingConfirmedScreen {
     ];
     const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
     return '${days[dt.weekday - 1]}, ${months[dt.month - 1]} ${dt.day}, ${dt.year}';
+  }
+
+  static DateTime _appointmentStart(DateTime date, String time) {
+    final parts = time.trim().split(' ');
+    final hm = parts.first.split(':');
+    var hour = int.parse(hm[0]);
+    final minute = int.parse(hm[1]);
+    final period = parts.length > 1 ? parts[1].toUpperCase() : 'AM';
+    if (period == 'PM' && hour != 12) hour += 12;
+    if (period == 'AM' && hour == 12) hour = 0;
+    return DateTime(date.year, date.month, date.day, hour, minute);
+  }
+
+  static String _googleCalendarDate(DateTime value) {
+    final utc = value.toUtc();
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${utc.year}${two(utc.month)}${two(utc.day)}T'
+        '${two(utc.hour)}${two(utc.minute)}${two(utc.second)}Z';
+  }
+
+  static Uri _googleCalendarUri({
+    required ProviderModel provider,
+    required ServiceModel service,
+    required DateTime start,
+    required DateTime end,
+  }) {
+    return Uri.https('calendar.google.com', '/calendar/render', {
+      'action': 'TEMPLATE',
+      'text': 'Boo: ${service.title} with ${provider.name}',
+      'dates': '${_googleCalendarDate(start)}/${_googleCalendarDate(end)}',
+      'details':
+          'Boo booking for ${service.title} with ${provider.name}. Keep booking coordination inside Boo.',
+      'location': provider.locationName,
+    });
+  }
+
+  static Future<void> _addToCalendar(
+    BuildContext context, {
+    required ProviderModel provider,
+    required ServiceModel service,
+    required DateTime date,
+    required String time,
+  }) async {
+    final start = _appointmentStart(date, time);
+    final durationMinutes =
+        service.durationMins > 0 ? service.durationMins : 60;
+    final end = start.add(Duration(minutes: durationMinutes));
+    var opened = false;
+
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      try {
+        opened = await _calendarChannel.invokeMethod<bool>('insertEvent', {
+              'title': 'Boo: ${service.title} with ${provider.name}',
+              'description':
+                  'Boo booking for ${service.title} with ${provider.name}.',
+              'location': provider.locationName,
+              'startMillis': start.millisecondsSinceEpoch,
+              'endMillis': end.millisecondsSinceEpoch,
+            }) ??
+            false;
+      } catch (_) {
+        opened = false;
+      }
+    }
+
+    if (!opened) {
+      opened = await launchUrl(
+        _googleCalendarUri(
+          provider: provider,
+          service: service,
+          start: start,
+          end: end,
+        ),
+        mode: LaunchMode.externalApplication,
+      );
+    }
+
+    if (!opened && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not open a calendar app.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   static Future<void> show(
@@ -197,11 +286,13 @@ class BookingConfirmedScreen {
               ),
               const SizedBox(height: 10),
               TextButton.icon(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Add to calendar — coming soon')),
-                  );
-                },
+                onPressed: () => _addToCalendar(
+                  context,
+                  provider: provider,
+                  service: service,
+                  date: date,
+                  time: time,
+                ),
                 icon: const Icon(Icons.calendar_month_outlined, size: 16),
                 label: const Text('Add to Calendar',
                     style: TextStyle(fontWeight: FontWeight.w700)),

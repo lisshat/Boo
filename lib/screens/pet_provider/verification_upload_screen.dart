@@ -1,4 +1,5 @@
 import 'package:boo/services/verification_upload_service.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 class VerificationUploadScreen extends StatefulWidget {
@@ -14,7 +15,12 @@ class _VerificationUploadScreenState extends State<VerificationUploadScreen> {
   static const _bg = Color(0xFFF6F7FB);
 
   late Future<Map<String, dynamic>> _statusFuture;
-  bool _busy = false;
+  PlatformFile? _idFile;
+  PlatformFile? _certFile;
+  bool _picking = false;
+  bool _submitting = false;
+
+  bool get _hasFile => _idFile != null || _certFile != null;
 
   @override
   void initState() {
@@ -28,22 +34,18 @@ class _VerificationUploadScreenState extends State<VerificationUploadScreen> {
     });
   }
 
-  Future<void> _upload(String documentType) async {
-    setState(() => _busy = true);
+  Future<void> _pickFile(String documentType) async {
+    setState(() => _picking = true);
     try {
-      final file = await VerificationUploadService.instance.pickAndUpload(
-        documentType: documentType,
-      );
+      final file = await VerificationUploadService.instance.pickFile();
       if (file == null) return;
-      await VerificationUploadService.instance.submitDocument(file);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${file.fileName} submitted for review'),
-          backgroundColor: _orange,
-        ),
-      );
-      _refresh();
+      setState(() {
+        if (documentType == 'government_id') {
+          _idFile = file;
+        } else {
+          _certFile = file;
+        }
+      });
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -53,12 +55,65 @@ class _VerificationUploadScreenState extends State<VerificationUploadScreen> {
         ),
       );
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) setState(() => _picking = false);
+    }
+  }
+
+  Future<void> _submitAll() async {
+    setState(() => _submitting = true);
+    final errors = <String>[];
+    try {
+      if (_idFile != null) {
+        try {
+          await VerificationUploadService.instance.uploadAndSubmit(
+            documentType: 'government_id',
+            file: _idFile!,
+          );
+          if (mounted) setState(() => _idFile = null);
+        } catch (e) {
+          errors.add('ID: ${e.toString().replaceFirst('Exception: ', '')}');
+        }
+      }
+      if (_certFile != null) {
+        try {
+          await VerificationUploadService.instance.uploadAndSubmit(
+            documentType: 'certificate_or_portfolio',
+            file: _certFile!,
+          );
+          if (mounted) setState(() => _certFile = null);
+        } catch (e) {
+          errors.add('Certificate: ${e.toString().replaceFirst('Exception: ', '')}');
+        }
+      }
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+
+    if (!mounted) return;
+
+    if (errors.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Documents submitted for review'),
+          backgroundColor: _orange,
+        ),
+      );
+      _refresh();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(errors.join('\n')),
+          backgroundColor: Colors.red.shade400,
+        ),
+      );
+      _refresh();
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final busy = _picking || _submitting;
+
     return Scaffold(
       backgroundColor: _bg,
       appBar: AppBar(
@@ -81,25 +136,83 @@ class _VerificationUploadScreenState extends State<VerificationUploadScreen> {
             children: [
               _StatusCard(status: status, documents: documents.length),
               const SizedBox(height: 16),
+              const Text(
+                'JPEG, PNG, PDF or DOCX · max 50 MB',
+                style: TextStyle(fontSize: 11, color: Colors.black38, letterSpacing: 0.3),
+              ),
+              const SizedBox(height: 10),
               _UploadTile(
                 icon: Icons.badge_outlined,
                 title: 'Government ID or Passport',
-                subtitle: 'JPG, PNG, HEIC, PDF, DOC or DOCX',
-                busy: _busy,
-                onTap: () => _upload('government_id'),
+                subtitle: 'Tap to select — encrypted and secure',
+                pickedFile: _idFile,
+                busy: busy,
+                onTap: () => _pickFile('government_id'),
+                onClear: busy ? null : () => setState(() => _idFile = null),
               ),
               const SizedBox(height: 12),
               _UploadTile(
                 icon: Icons.workspace_premium_outlined,
                 title: 'Training certificate or portfolio',
-                subtitle: 'JPG, PNG, HEIC, PDF, DOC or DOCX',
-                busy: _busy,
-                onTap: () => _upload('certificate_or_portfolio'),
+                subtitle: 'Tap to select your credentials',
+                pickedFile: _certFile,
+                busy: busy,
+                onTap: () => _pickFile('certificate_or_portfolio'),
+                onClear: busy ? null : () => setState(() => _certFile = null),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  onPressed: (busy || !_hasFile) ? null : _submitAll,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _orange,
+                    disabledBackgroundColor: _orange.withValues(alpha: 0.4),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  child: _submitting
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2.5,
+                          ),
+                        )
+                      : const Text(
+                          'Submit for review',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                          ),
+                        ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Center(
+                child: TextButton(
+                  onPressed: busy ? null : () => Navigator.pop(context),
+                  child: Text(
+                    "I'll do this later →",
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: busy ? Colors.grey.shade300 : Colors.grey.shade500,
+                    ),
+                  ),
+                ),
+              ),
               if (snapshot.connectionState == ConnectionState.waiting)
-                const Center(child: CircularProgressIndicator(color: _orange))
+                const Padding(
+                  padding: EdgeInsets.only(top: 16),
+                  child: Center(child: CircularProgressIndicator(color: _orange)),
+                )
               else if (documents.isNotEmpty) ...[
+                const SizedBox(height: 16),
                 const Text(
                   'Submitted documents',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -175,27 +288,37 @@ class _UploadTile extends StatelessWidget {
   final IconData icon;
   final String title;
   final String subtitle;
+  final PlatformFile? pickedFile;
   final bool busy;
   final VoidCallback onTap;
+  final VoidCallback? onClear;
 
   const _UploadTile({
     required this.icon,
     required this.title,
     required this.subtitle,
+    required this.pickedFile,
     required this.busy,
     required this.onTap,
+    this.onClear,
   });
+
+  bool get _picked => pickedFile != null;
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: busy ? null : onTap,
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFEAECEF)),
+          border: Border.all(
+            color: _picked ? const Color(0xFFF68B1F) : const Color(0xFFEAECEF),
+            width: _picked ? 1.5 : 1,
+          ),
         ),
         child: Row(
           children: [
@@ -203,10 +326,16 @@ class _UploadTile extends StatelessWidget {
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: const Color(0xFFF68B1F).withOpacity(0.1),
+                color: _picked
+                    ? const Color(0xFFF68B1F).withValues(alpha: 0.1)
+                    : Colors.grey.shade100,
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(icon, color: const Color(0xFFF68B1F), size: 22),
+              child: Icon(
+                _picked ? Icons.check_circle_outline : icon,
+                color: _picked ? const Color(0xFFF68B1F) : Colors.black45,
+                size: 22,
+              ),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -215,26 +344,33 @@ class _UploadTile extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                    ),
+                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    subtitle,
-                    style: const TextStyle(fontSize: 12, color: Colors.black45),
+                    _picked ? pickedFile!.name : subtitle,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: _picked ? const Color(0xFFF68B1F) : Colors.black45,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
             ),
-            busy
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.upload_file_rounded, color: Colors.black38),
+            if (busy)
+              const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            else if (_picked && onClear != null)
+              GestureDetector(
+                onTap: onClear,
+                child: const Icon(Icons.close, size: 18, color: Colors.black38),
+              )
+            else
+              const Icon(Icons.upload_file_rounded, color: Colors.black38),
           ],
         ),
       ),

@@ -1,6 +1,9 @@
 import 'package:boo/screens/admin/admin_theme.dart';
 import 'package:boo/services/admin_service.dart';
 import 'package:flutter/material.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 class AdminDashboardPage extends StatefulWidget {
   const AdminDashboardPage({super.key});
@@ -11,11 +14,185 @@ class AdminDashboardPage extends StatefulWidget {
 
 class _AdminDashboardPageState extends State<AdminDashboardPage> {
   late Future<Map<String, dynamic>> _future;
+  bool _exporting = false;
 
   @override
   void initState() {
     super.initState();
     _future = AdminService.instance.stats();
+  }
+
+  Future<void> _exportReport(Map<String, dynamic> stats) async {
+    setState(() => _exporting = true);
+    try {
+      final now = DateTime.now();
+      final dateStr =
+          '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+
+      final bookings = stats['bookings'] as Map<String, dynamic>? ?? {};
+      final orange = PdfColor.fromHex('F68B1F');
+
+      final doc = pw.Document();
+      doc.addPage(
+        pw.Page(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(40),
+          build: (ctx) => pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              // Header
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text(
+                        'Boo Pet Care',
+                        style: pw.TextStyle(
+                          fontSize: 22,
+                          fontWeight: pw.FontWeight.bold,
+                          color: orange,
+                        ),
+                      ),
+                      pw.Text(
+                        'Dashboard Report',
+                        style: const pw.TextStyle(fontSize: 14),
+                      ),
+                    ],
+                  ),
+                  pw.Text(
+                    'Generated: $dateStr',
+                    style: const pw.TextStyle(fontSize: 10),
+                  ),
+                ],
+              ),
+              pw.Divider(color: orange, thickness: 1.5),
+              pw.SizedBox(height: 20),
+
+              // Platform Overview
+              pw.Text(
+                'Platform Overview',
+                style: pw.TextStyle(
+                  fontSize: 14,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+              pw.SizedBox(height: 10),
+              pw.Table(
+                border: pw.TableBorder.all(
+                  color: PdfColors.grey300,
+                  width: 0.5,
+                ),
+                children: [
+                  _pdfHeaderRow(['Metric', 'Value'], orange),
+                  _pdfDataRow('Total Users', _v(stats, ['users', 'total'])),
+                  _pdfDataRow('Verified Providers', _v(stats, ['verification', 'approved'])),
+                  _pdfDataRow('Pending Verifications', _v(stats, ['verification', 'pending'])),
+                  _pdfDataRow('Active Bookings', _v(stats, ['bookings', 'accepted'])),
+                  _pdfDataRow('Total Reviews', _v(stats, ['reviews', 'total'])),
+                  _pdfDataRow('Flagged Users', '${stats['flaggedUsers'] ?? 0}'),
+                ],
+              ),
+              pw.SizedBox(height: 24),
+
+              // Bookings by Status
+              pw.Text(
+                'Bookings by Status',
+                style: pw.TextStyle(
+                  fontSize: 14,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+              pw.SizedBox(height: 10),
+              pw.Table(
+                border: pw.TableBorder.all(
+                  color: PdfColors.grey300,
+                  width: 0.5,
+                ),
+                children: [
+                  _pdfHeaderRow(['Status', 'Count'], orange),
+                  for (final s in ['pending', 'accepted', 'completed', 'cancelled', 'declined'])
+                    _pdfDataRow(
+                      s[0].toUpperCase() + s.substring(1),
+                      '${bookings[s] ?? 0}',
+                    ),
+                  _pdfDataRow('Total', '${bookings['total'] ?? 0}'),
+                ],
+              ),
+
+              pw.Spacer(),
+              pw.Divider(color: PdfColors.grey300),
+              pw.Text(
+                'Boo Pet Care Platform · support@boo.co.ke',
+                style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey),
+              ),
+            ],
+          ),
+        ),
+      );
+
+      await Printing.sharePdf(
+        bytes: await doc.save(),
+        filename: 'boo-report-$dateStr.pdf',
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Export failed: ${e.toString().replaceFirst('Exception: ', '')}'),
+            backgroundColor: AdminColors.danger,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  pw.TableRow _pdfHeaderRow(List<String> labels, PdfColor bg) {
+    return pw.TableRow(
+      decoration: pw.BoxDecoration(color: bg),
+      children: labels
+          .map(
+            (l) => pw.Padding(
+              padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              child: pw.Text(
+                l,
+                style: pw.TextStyle(
+                  fontSize: 11,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.white,
+                ),
+              ),
+            ),
+          )
+          .toList(),
+    );
+  }
+
+  pw.TableRow _pdfDataRow(String label, String value) {
+    return pw.TableRow(
+      children: [
+        pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+          child: pw.Text(label, style: const pw.TextStyle(fontSize: 11)),
+        ),
+        pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+          child: pw.Text(value, style: const pw.TextStyle(fontSize: 11)),
+        ),
+      ],
+    );
+  }
+
+  String _v(Map<String, dynamic>? data, List<String> path) {
+    dynamic value = data;
+    for (final key in path) {
+      if (value is! Map<String, dynamic>) return '0';
+      value = value[key];
+    }
+    return '${value ?? 0}';
   }
 
   @override
@@ -46,12 +223,25 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                   ),
                 ),
                 ElevatedButton.icon(
-                  onPressed: () {},
-                  icon: const Icon(Icons.download, size: 16),
-                  label: const Text('Export Report'),
+                  onPressed: (stats == null || _exporting)
+                      ? null
+                      : () => _exportReport(stats),
+                  icon: _exporting
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.download, size: 16),
+                  label: Text(_exporting ? 'Exporting...' : 'Export Report'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AdminColors.orange,
                     foregroundColor: Colors.white,
+                    disabledBackgroundColor: AdminColors.orange.withValues(alpha: 0.5),
+                    disabledForegroundColor: Colors.white,
                   ),
                 ),
               ],
@@ -82,15 +272,6 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
         );
       },
     );
-  }
-
-  String _v(Map<String, dynamic>? data, List<String> path) {
-    dynamic value = data;
-    for (final key in path) {
-      if (value is! Map<String, dynamic>) return '0';
-      value = value[key];
-    }
-    return '${value ?? 0}';
   }
 }
 

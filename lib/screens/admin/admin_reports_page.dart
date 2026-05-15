@@ -22,6 +22,8 @@ class _AdminReportsPageState extends State<AdminReportsPage> {
       'Booking\nActivity',
       'Service\nCatalog',
       'Trust &\nSafety',
+      'Activity\n(Pets)',
+      'Ownership\n(Pets)',
     ];
     final pages = [
       const _UserSummaryReport(),
@@ -29,6 +31,8 @@ class _AdminReportsPageState extends State<AdminReportsPage> {
       const _BookingActivityReport(),
       const _ServiceCatalogReport(),
       const _TrustSafetyReport(),
+      const _PetActivityReport(),
+      const _PetOwnershipReport(),
     ];
 
     return ListView(
@@ -97,6 +101,7 @@ class _UserSummaryReportState extends State<_UserSummaryReport> {
       );
 
   void _apply() {
+    if (!_validateDateRange(context, _startDate, _endDate)) return;
     final next = _load();
     setState(() {
       _future = next;
@@ -132,11 +137,14 @@ class _UserSummaryReportState extends State<_UserSummaryReport> {
             _DateButton(
               label: 'Start Date',
               value: _startDate,
+              lastDate: DateTime.now(),
               onChanged: (v) => setState(() => _startDate = v),
             ),
             _DateButton(
               label: 'End Date',
               value: _endDate,
+              firstDate: _startDate,
+              lastDate: DateTime.now(),
               onChanged: (v) => setState(() => _endDate = v),
             ),
             _ApplyResetButtons(onApply: _apply, onReset: _reset),
@@ -482,6 +490,7 @@ class _BookingActivityReportState extends State<_BookingActivityReport> {
       );
 
   void _apply() {
+    if (!_validateDateRange(context, _startDate, _endDate)) return;
     final next = _load();
     setState(() {
       _future = next;
@@ -507,11 +516,14 @@ class _BookingActivityReportState extends State<_BookingActivityReport> {
             _DateButton(
               label: 'Start Date',
               value: _startDate,
+              lastDate: DateTime.now(),
               onChanged: (v) => setState(() => _startDate = v),
             ),
             _DateButton(
               label: 'End Date',
               value: _endDate,
+              firstDate: _startDate,
+              lastDate: DateTime.now(),
               onChanged: (v) => setState(() => _endDate = v),
             ),
             _Drop(
@@ -830,6 +842,7 @@ class _TrustSafetyReportState extends State<_TrustSafetyReport> {
       );
 
   void _apply() {
+    if (!_validateDateRange(context, _startDate, _endDate)) return;
     final next = _load();
     setState(() {
       _future = next;
@@ -991,11 +1004,14 @@ class _TrustSafetyReportState extends State<_TrustSafetyReport> {
             _DateButton(
               label: 'Start Date',
               value: _startDate,
+              lastDate: DateTime.now(),
               onChanged: (v) => setState(() => _startDate = v),
             ),
             _DateButton(
               label: 'End Date',
               value: _endDate,
+              firstDate: _startDate,
+              lastDate: DateTime.now(),
               onChanged: (v) => setState(() => _endDate = v),
             ),
             _ApplyResetButtons(onApply: _apply, onReset: _reset),
@@ -1093,6 +1109,337 @@ class _TrustSafetyReportState extends State<_TrustSafetyReport> {
       ],
     );
   }
+}
+
+class _PetOwnershipReport extends StatefulWidget {
+  const _PetOwnershipReport();
+
+  @override
+  State<_PetOwnershipReport> createState() => _PetOwnershipReportState();
+}
+
+class _PetOwnershipReportState extends State<_PetOwnershipReport> {
+  double _minPets = 0;
+  late Future<Map<String, dynamic>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _load();
+  }
+
+  Future<Map<String, dynamic>> _load() =>
+      AdminService.instance.petOwnership(minPets: _minPets.round());
+
+  void _apply() {
+    final next = _load();
+    setState(() => _future = next);
+  }
+
+  void _reset() {
+    setState(() {
+      _minPets = 0;
+      _future = _load();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        _FiltersCard(
+          children: [
+            SizedBox(
+              width: 260,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Min Pets: ${_minPets.round()}',
+                    style: const TextStyle(
+                        fontSize: 12, color: AdminColors.muted),
+                  ),
+                  Slider(
+                    min: 0,
+                    max: 10,
+                    divisions: 10,
+                    value: _minPets,
+                    activeColor: AdminColors.orange,
+                    onChanged: (v) => setState(() => _minPets = v),
+                  ),
+                ],
+              ),
+            ),
+            _ApplyResetButtons(onApply: _apply, onReset: _reset),
+          ],
+        ),
+        const SizedBox(height: 16),
+        _ReportFuture(
+          future: _future,
+          builder: (data) {
+            final summary = data['summary'] as Map<String, dynamic>? ?? {};
+            final distribution =
+                (data['distribution'] as List<dynamic>? ?? const [])
+                    .cast<Map<String, dynamic>>();
+            final topOwners =
+                (data['topOwners'] as List<dynamic>? ?? const [])
+                    .cast<Map<String, dynamic>>();
+
+            final totalPetOwners = _toInt(summary['totalPetOwners']);
+            final ownersWithNoPets = _toInt(summary['ownersWithNoPets']);
+            final totalPets = _toInt(summary['totalPets']);
+            final avgPets = _toDouble(summary['avgPetsPerOwner']);
+
+            final tableColumns = [
+              'Owner Name',
+              'Email',
+              'Pets',
+              'Species',
+              'Joined',
+            ];
+            final exportRows = topOwners
+                .map((row) => [
+                      row['owner_name']?.toString() ?? '',
+                      row['email']?.toString() ?? '',
+                      '${row['pet_count'] ?? 0}',
+                      row['species_list']?.toString() ?? '—',
+                      _date(row['joined_at']),
+                    ])
+                .toList();
+
+            // Distribution bar data — cap display at 5+
+            final distLabels = <String>[];
+            final distValues = <double>[];
+            for (final row in distribution) {
+              final count = _toInt(row['pet_count']);
+              distLabels.add(count >= 5 ? '5+' : '$count pet${count == 1 ? '' : 's'}');
+              distValues.add(_toDouble(row['owner_count']));
+            }
+
+            return Column(
+              children: [
+                _KpiRow(cards: [
+                  _KpiData('Pet Owners', '$totalPetOwners'),
+                  _KpiData('No Pets Yet', '$ownersWithNoPets'),
+                  _KpiData('Total Pets', '$totalPets'),
+                  _KpiData('Avg Pets/Owner', avgPets.toStringAsFixed(1)),
+                ]),
+                const SizedBox(height: 16),
+                _ChartCard(
+                  title: 'Owners by Pet Count',
+                  child: _BarChart(
+                    labels: distLabels,
+                    values: distValues,
+                    colors:
+                        List<Color>.filled(distLabels.length, AdminColors.orange),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _ReportTable(
+                  columns: tableColumns,
+                  rows: exportRows,
+                  numericColumns: const {2},
+                ),
+                const SizedBox(height: 16),
+                _ExportRow(
+                  onPdf: () => ReportPdfService.exportToPdf(
+                    reportTitle: 'Pet Ownership Report',
+                    columns: tableColumns,
+                    rows: exportRows,
+                    appliedFilters: 'Min Pets: ${_minPets.round()}',
+                    summaryData: {
+                      'Pet Owners': totalPetOwners,
+                      'No Pets': ownersWithNoPets,
+                      'Total Pets': totalPets,
+                    },
+                  ),
+                  onCsv: () => ReportPdfService.exportToCsv(
+                    reportTitle: 'Pet Ownership Report',
+                    columns: tableColumns,
+                    rows: exportRows,
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _PetActivityReport extends StatefulWidget {
+  const _PetActivityReport();
+
+  @override
+  State<_PetActivityReport> createState() => _PetActivityReportState();
+}
+
+class _PetActivityReportState extends State<_PetActivityReport> {
+  String _species = 'all';
+  late Future<Map<String, dynamic>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _load();
+  }
+
+  Future<Map<String, dynamic>> _load() => AdminService.instance.petActivity(
+        species: _species == 'all' ? null : _species,
+      );
+
+  void _apply() {
+    final next = _load();
+    setState(() => _future = next);
+  }
+
+  void _reset() {
+    setState(() {
+      _species = 'all';
+      _future = _load();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        _FiltersCard(
+          children: [
+            _Drop(
+              label: 'Species',
+              value: _species,
+              values: const {
+                'all': 'All Species',
+                'dog': 'Dog',
+                'cat': 'Cat',
+                'bird': 'Bird',
+                'rabbit': 'Rabbit',
+                'other': 'Other',
+              },
+              onChanged: (v) => setState(() => _species = v),
+            ),
+            _ApplyResetButtons(onApply: _apply, onReset: _reset),
+          ],
+        ),
+        const SizedBox(height: 16),
+        _ReportFuture(
+          future: _future,
+          builder: (data) {
+            final summary = data['summary'] as Map<String, dynamic>? ?? {};
+            final bySpecies = (data['bySpecies'] as List<dynamic>? ?? const [])
+                .cast<Map<String, dynamic>>();
+            final topPets = (data['topPets'] as List<dynamic>? ?? const [])
+                .cast<Map<String, dynamic>>();
+
+            final totalPets = _toInt(summary['totalPets']);
+            final totalBookings = _toInt(summary['totalBookings']);
+            final mostPopular = summary['mostPopularSpecies']?.toString() ?? 'N/A';
+            final avgBookings = _toDouble(summary['avgBookingsPerPet']);
+
+            final tableColumns = [
+              'Pet Name',
+              'Species',
+              'Breed',
+              'Owner',
+              'Bookings',
+              'Last Booked',
+            ];
+            final exportRows = topPets
+                .map((row) => [
+                      row['pet_name']?.toString() ?? '',
+                      _title(row['species']),
+                      row['breed']?.toString() ?? '—',
+                      row['owner_name']?.toString() ?? '',
+                      '${row['booking_count'] ?? 0}',
+                      _date(row['last_booking']),
+                    ])
+                .toList();
+
+            return Column(
+              children: [
+                _KpiRow(cards: [
+                  _KpiData('Total Pets', '$totalPets'),
+                  _KpiData('Total Bookings', '$totalBookings'),
+                  _KpiData('Top Species', _title(mostPopular)),
+                  _KpiData('Avg Bookings/Pet', avgBookings.toStringAsFixed(1)),
+                ]),
+                const SizedBox(height: 16),
+                _ChartCard(
+                  title: 'Pets by Species',
+                  child: bySpecies.isEmpty
+                      ? const Center(child: Text('No data'))
+                      : PieChart(
+                          PieChartData(
+                            centerSpaceRadius: 42,
+                            sectionsSpace: 2,
+                            sections: bySpecies.map((row) {
+                              final species =
+                                  row['species']?.toString().toLowerCase() ?? '';
+                              return PieChartSectionData(
+                                value: _toDouble(row['pet_count']),
+                                title: _title(species),
+                                color: _speciesColor(species),
+                                radius: 72,
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                ),
+                const SizedBox(height: 16),
+                _ReportTable(
+                  columns: tableColumns,
+                  rows: exportRows,
+                  numericColumns: const {4},
+                ),
+                const SizedBox(height: 16),
+                _ExportRow(
+                  onPdf: () => ReportPdfService.exportToPdf(
+                    reportTitle: 'Pet Activity Report',
+                    columns: tableColumns,
+                    rows: exportRows,
+                    appliedFilters:
+                        'Species: ${_speciesLabel(_species)}',
+                    summaryData: {
+                      'Total Pets': totalPets,
+                      'Total Bookings': totalBookings,
+                      'Top Species': mostPopular,
+                    },
+                  ),
+                  onCsv: () => ReportPdfService.exportToCsv(
+                    reportTitle: 'Pet Activity Report',
+                    columns: tableColumns,
+                    rows: exportRows,
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+Color _speciesColor(String species) {
+  switch (species.toLowerCase()) {
+    case 'dog':
+      return AdminColors.orange;
+    case 'cat':
+      return Colors.green.shade600;
+    case 'bird':
+      return AdminColors.blue;
+    case 'rabbit':
+      return Colors.purple.shade400;
+    default:
+      return Colors.grey.shade400;
+  }
+}
+
+String _speciesLabel(String species) {
+  if (species == 'all') return 'All Species';
+  return _title(species);
 }
 
 class _ReportFuture extends StatelessWidget {
@@ -1757,24 +2104,36 @@ class _DateButton extends StatelessWidget {
   final String label;
   final DateTime? value;
   final ValueChanged<DateTime?> onChanged;
+  final DateTime? firstDate;
+  final DateTime? lastDate;
 
   const _DateButton({
     required this.label,
     required this.value,
     required this.onChanged,
+    this.firstDate,
+    this.lastDate,
   });
 
   @override
   Widget build(BuildContext context) {
+    final now = DateTime.now();
     return SizedBox(
       width: 160,
       child: OutlinedButton.icon(
         onPressed: () async {
+          final effectiveLast = lastDate ?? now;
+          final effectiveFirst = firstDate ?? DateTime(2020);
+          final initial = value != null &&
+                  !value!.isAfter(effectiveLast) &&
+                  !value!.isBefore(effectiveFirst)
+              ? value!
+              : effectiveLast;
           final picked = await showDatePicker(
             context: context,
-            initialDate: value ?? DateTime.now(),
-            firstDate: DateTime(2020),
-            lastDate: DateTime.now().add(const Duration(days: 365)),
+            initialDate: initial,
+            firstDate: effectiveFirst,
+            lastDate: effectiveLast,
           );
           if (picked != null) onChanged(picked);
         },
@@ -1887,6 +2246,33 @@ String? _apiDate(DateTime? value) {
 
 String _rangeLabel(DateTime? start, DateTime? end) {
   return '${_apiDate(start) ?? 'Any'} to ${_apiDate(end) ?? 'Any'}';
+}
+
+bool _validateDateRange(
+    BuildContext context, DateTime? start, DateTime? end) {
+  final now = DateTime.now();
+  if (start != null && start.isAfter(now)) {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('Start date cannot be in the future'),
+      backgroundColor: AdminColors.danger,
+    ));
+    return false;
+  }
+  if (end != null && end.isAfter(now)) {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('End date cannot be in the future'),
+      backgroundColor: AdminColors.danger,
+    ));
+    return false;
+  }
+  if (start != null && end != null && start.isAfter(end)) {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('Start date cannot be after end date'),
+      backgroundColor: AdminColors.danger,
+    ));
+    return false;
+  }
+  return true;
 }
 
 String _date(dynamic value) {

@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:boo/screens/pet_owner/favorite_providers_screen.dart';
+import 'package:boo/screens/pet_owner/owner_spending_screen.dart';
 import 'package:boo/screens/pet_owner/pet_profile_page.dart';
 import 'package:boo/screens/pet_provider/onboarding/provider_onboarding_step1.dart';
 import 'package:boo/services/auth_service.dart';
@@ -662,6 +664,24 @@ class _ProfilePageState extends State<ProfilePage> {
               builder: (context, snap) {
                 final location = snap.data?['location'] as String?;
                 return _SettingsGroup(items: [
+                  _SettingsItem(
+                    icon: Icons.account_balance_wallet_outlined,
+                    label: 'My Spending',
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const OwnerSpendingScreen()),
+                    ),
+                  ),
+                  _SettingsItem(
+                    icon: Icons.favorite_border_rounded,
+                    label: 'Favorite Providers',
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const FavoriteProvidersScreen()),
+                    ),
+                  ),
                   _SettingsItem(
                     icon: Icons.notifications_outlined,
                     label: 'Notifications',

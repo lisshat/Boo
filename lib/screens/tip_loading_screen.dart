@@ -182,14 +182,6 @@ class _TipLoadingScreenState extends State<TipLoadingScreen>
               ),
 
               const Spacer(flex: 2),
-
-              // Bottom logo
-              SvgPicture.asset(
-                'assets/images/boo_logo.svg',
-                height: 24,
-                fit: BoxFit.contain,
-                colorFilter: const ColorFilter.mode(Color(0xFFD1D5DB), BlendMode.srcIn),
-              ),
               const SizedBox(height: 24),
             ],
           ),

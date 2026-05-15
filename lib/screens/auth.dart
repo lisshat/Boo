@@ -73,6 +73,10 @@ class _BooAuthScreenState extends State<BooAuthScreen> {
     if (!mounted) return;
     setState(() => _loading = false);
 
+    if (error == '__ACCOUNT_SUSPENDED__') {
+      return;
+    }
+
     if (error != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(error), backgroundColor: Colors.red),

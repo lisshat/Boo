@@ -433,8 +433,10 @@ class _EditServiceSheetState extends State<_EditServiceSheet> {
     super.dispose();
   }
 
-  bool get _canSave =>
-      _nameCtrl.text.trim().isNotEmpty && _priceCtrl.text.trim().isNotEmpty;
+  bool get _canSave {
+    final price = double.tryParse(_priceCtrl.text.trim());
+    return _nameCtrl.text.trim().isNotEmpty && price != null && price > 0;
+  }
 
   Future<void> _save() async {
     setState(() => _saving = true);
@@ -717,8 +719,10 @@ class _AddServiceSheetState extends State<_AddServiceSheet> {
     super.dispose();
   }
 
-  bool get _canSave =>
-      _nameCtrl.text.trim().isNotEmpty && _priceCtrl.text.trim().isNotEmpty;
+  bool get _canSave {
+    final price = double.tryParse(_priceCtrl.text.trim());
+    return _nameCtrl.text.trim().isNotEmpty && price != null && price > 0;
+  }
 
   Future<void> _save() async {
     setState(() => _saving = true);

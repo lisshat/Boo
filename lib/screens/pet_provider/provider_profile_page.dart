@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:boo/services/auth_service.dart';
 import 'package:boo/services/cloudinary_upload_service.dart';
 import 'provider_availability_screen.dart';
+import 'provider_earnings_screen.dart';
 import 'provider_reviews_screen.dart';
 import 'provider_services_page.dart';
 import 'verification_upload_screen.dart';
@@ -432,6 +433,46 @@ class _ProfileBodyState extends State<_ProfileBody> {
                 context,
                 MaterialPageRoute(
                     builder: (_) => const VerificationUploadScreen()),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // My Earnings
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: ListTile(
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+              leading: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(Icons.savings_outlined,
+                    color: Colors.green.shade600, size: 18),
+              ),
+              title: const Text('My Earnings',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+              subtitle: const Text('View your income breakdown',
+                  style: TextStyle(fontSize: 12, color: Colors.black45)),
+              trailing: const Icon(Icons.chevron_right, color: Colors.black26),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => const ProviderEarningsScreen()),
               ),
             ),
           ),

@@ -30,41 +30,56 @@ class VerificationUploadService {
     defaultValue: 'boo_uploads',
   );
 
+  static const _maxBytes = 50 * 1024 * 1024; // 50 MB
+  static const _allowedExtensions = ['jpg', 'jpeg', 'png', 'pdf', 'docx'];
+
   bool get isCloudinaryConfigured =>
       _cloudName.isNotEmpty && _uploadPreset.isNotEmpty;
 
-  Future<UploadedVerificationFile?> pickAndUpload({
+  /// Pick and validate a file locally. Nothing is uploaded.
+  /// Returns null if the user cancels. Throws on validation failure.
+  Future<PlatformFile?> pickFile() async {
+    final picked = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowMultiple: false,
+      withData: true,
+      allowedExtensions: _allowedExtensions,
+    );
+    if (picked == null || picked.files.isEmpty) return null;
+
+    final file = picked.files.single;
+
+    final ext = (file.extension ?? '').toLowerCase();
+    if (!_allowedExtensions.contains(ext)) {
+      throw Exception(
+        'Unsupported file type. Please use JPEG, PNG, PDF, or DOCX.',
+      );
+    }
+
+    if (file.size > _maxBytes) {
+      throw Exception('File is too large. Maximum size is 50 MB.');
+    }
+
+    return file;
+  }
+
+  /// Upload a locally-picked file to Cloudinary then submit to the backend.
+  Future<void> uploadAndSubmit({
     required String documentType,
+    required PlatformFile file,
   }) async {
     if (!isCloudinaryConfigured) {
       throw Exception(
         'Cloudinary is not configured. Add CLOUDINARY_CLOUD_NAME and CLOUDINARY_UPLOAD_PRESET.',
       );
     }
-
-    final picked = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowMultiple: false,
-      withData: true,
-      allowedExtensions: const [
-        'jpg',
-        'jpeg',
-        'png',
-        'webp',
-        'heic',
-        'pdf',
-        'doc',
-        'docx',
-      ],
-    );
-    if (picked == null || picked.files.isEmpty) return null;
-
-    final file = picked.files.single;
     final url = await _uploadToCloudinary(file);
-    return UploadedVerificationFile(
-      documentType: documentType,
-      fileName: file.name,
-      fileUrl: url,
+    await submitDocument(
+      UploadedVerificationFile(
+        documentType: documentType,
+        fileName: file.name,
+        fileUrl: url,
+      ),
     );
   }
 
@@ -89,7 +104,7 @@ class VerificationUploadService {
       throw Exception('Could not read selected file');
     }
 
-    final streamed = await request.send().timeout(const Duration(seconds: 45));
+    final streamed = await request.send().timeout(const Duration(seconds: 60));
     final response = await http.Response.fromStream(streamed);
     final body = jsonDecode(response.body) as Map<String, dynamic>;
 

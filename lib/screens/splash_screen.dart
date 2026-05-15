@@ -97,14 +97,6 @@ class _SplashScreenState extends State<SplashScreen>
                   ),
 
                   const Spacer(flex: 3),
-
-                  // Bottom branding
-                  SvgPicture.asset(
-                    'assets/images/boo_logo.svg',
-                    height: 28,
-                    fit: BoxFit.contain,
-                    colorFilter: const ColorFilter.mode(Color(0xFFD1D5DB), BlendMode.srcIn),
-                  ),
                   const SizedBox(height: 24),
                 ],
               ),

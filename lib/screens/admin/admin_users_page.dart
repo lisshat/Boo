@@ -40,12 +40,14 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
           children: [
             Icon(Icons.warning_amber_rounded, color: AdminColors.danger),
             const SizedBox(width: 10),
-            Text(isBanned ? 'Confirm Account Restore' : 'Confirm Account Ban'),
+            Text(
+              isBanned ? 'Confirm Account Unban' : 'Confirm Account Ban',
+            ),
           ],
         ),
         content: Text(
           isBanned
-              ? 'Are you sure you want to restore ${user['full_name']}?'
+              ? 'Are you sure you want to reinstate ${user['full_name']}? They will be notified and regain access to the platform.'
               : 'Are you sure you want to ban ${user['full_name']}? This will immediately revoke their access to the platform.',
         ),
         actions: [
@@ -58,8 +60,9 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                     isBanned ? AdminColors.orange : AdminColors.danger,
                 foregroundColor: Colors.white,
               ),
-              child:
-                  Text(isBanned ? 'Yes, Restore Account' : 'Yes, Confirm Ban'),
+              child: Text(
+                isBanned ? 'Yes, Confirm Unban' : 'Yes, Confirm Ban',
+              ),
             ),
           ),
           SizedBox(
@@ -73,8 +76,41 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
       ),
     );
     if (confirmed != true) return;
-    await AdminService.instance.setBanned(user['id'].toString(), !isBanned);
-    _refresh();
+
+    try {
+      final result = await AdminService.instance.toggleBan(
+        userId: user['id'].toString(),
+        isBanned: !isBanned,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result['message']?.toString() ??
+                (isBanned
+                    ? 'User unbanned successfully'
+                    : 'User banned successfully'),
+          ),
+          backgroundColor: Colors.green.shade700,
+        ),
+      );
+      setState(() {
+        final updated = Map<String, dynamic>.from(user);
+        updated['is_banned'] = !isBanned;
+        if (_selected?['id'] == user['id']) {
+          _selected = updated;
+        }
+      });
+      _refresh();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          backgroundColor: AdminColors.danger,
+        ),
+      );
+    }
   }
 
   @override
@@ -171,10 +207,18 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                                     : Colors.green.shade700,
                               )),
                               DataCell(Text(_date(user['created_at']))),
-                              DataCell(TextButton(
-                                onPressed: () => _confirmBan(user),
-                                child: Text(banned ? 'Restore' : 'Suspend'),
-                              )),
+                              DataCell(
+                                user['role'] == 'admin'
+                                    ? Tooltip(
+                                        message: 'Admin accounts cannot be suspended',
+                                        child: Icon(Icons.shield_outlined,
+                                            color: AdminColors.muted, size: 20),
+                                      )
+                                    : TextButton(
+                                        onPressed: () => _confirmBan(user),
+                                        child: Text(banned ? 'Unban' : 'Suspend'),
+                                      ),
+                              ),
                             ],
                           );
                         }).toList(),
@@ -208,19 +252,30 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                     color: AdminColors.orange,
                   ),
                   const Spacer(),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: () => _confirmBan(_selected!),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AdminColors.danger,
-                        foregroundColor: Colors.white,
+                  if (_selected!['role'] == 'admin')
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: const [
+                        Icon(Icons.shield_outlined, color: AdminColors.muted),
+                        SizedBox(width: 8),
+                        Text('Admin — cannot be suspended',
+                            style: TextStyle(color: AdminColors.muted)),
+                      ],
+                    )
+                  else
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () => _confirmBan(_selected!),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AdminColors.danger,
+                          foregroundColor: Colors.white,
+                        ),
+                        child: Text(_selected!['is_banned'] == true
+                            ? 'Unban Account'
+                            : 'Suspend Account'),
                       ),
-                      child: Text(_selected!['is_banned'] == true
-                          ? 'Restore Account'
-                          : 'Suspend Account'),
                     ),
-                  ),
                 ],
               ),
             ),

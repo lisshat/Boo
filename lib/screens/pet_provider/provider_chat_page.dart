@@ -14,6 +14,7 @@ class _ProviderChatPageState extends State<ProviderChatPage> {
   static const _bg = Color(0xFFF6F7FB);
 
   late final Future<Stream<List<Channel>>?> _channelsFuture;
+  final Set<String> _hiddenChannelKeys = {};
 
   @override
   void initState() {
@@ -37,6 +38,29 @@ class _ProviderChatPageState extends State<ProviderChatPage> {
       watch: true,
       state: true,
     );
+  }
+
+  Future<bool> _hideChannel(Channel channel) async {
+    try {
+      await channel.hide();
+      if (mounted) {
+        setState(() => _hiddenChannelKeys.add(_channelKey(channel)));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Chat deleted')),
+        );
+      }
+      return true;
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not delete chat. Please try again.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return false;
+    }
   }
 
   @override
@@ -136,7 +160,10 @@ class _ProviderChatPageState extends State<ProviderChatPage> {
                             channelSnapshot.connectionState ==
                                 ConnectionState.waiting,
                         unavailable: !loading && channelStream == null,
-                        channels: channels,
+                        channels: channels
+                            .where((c) =>
+                                !_hiddenChannelKeys.contains(_channelKey(c)))
+                            .toList(),
                       ),
                     ),
                   ],
@@ -174,10 +201,54 @@ class _ProviderChatPageState extends State<ProviderChatPage> {
       itemCount: channels.length,
       separatorBuilder: (_, __) =>
           const Divider(height: 1, color: Color(0xFFEAECEF)),
-      itemBuilder: (context, i) => _ThreadTile(
-        channel: channels[i],
-        onReadChanged: () => setState(() {}),
+      itemBuilder: (context, i) {
+        final channel = channels[i];
+        return _DismissibleThread(
+          channel: channel,
+          onDelete: () => _hideChannel(channel),
+          child: _ThreadTile(
+            channel: channel,
+            onReadChanged: () => setState(() {}),
+            onSelfChannel: () {
+              setState(
+                () => _hiddenChannelKeys.add(_channelKey(channel)),
+              );
+              channel.hide().catchError((_) {});
+            },
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _DismissibleThread extends StatelessWidget {
+  final Channel channel;
+  final Widget child;
+  final Future<bool> Function() onDelete;
+
+  const _DismissibleThread({
+    required this.channel,
+    required this.child,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Dismissible(
+      key: ValueKey(_channelKey(channel)),
+      direction: DismissDirection.endToStart,
+      confirmDismiss: (_) => onDelete(),
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 18),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEF4444),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: const Icon(Icons.delete_outline_rounded, color: Colors.white),
       ),
+      child: child,
     );
   }
 }
@@ -223,14 +294,41 @@ class _EmptyState extends StatelessWidget {
 class _ThreadTile extends StatelessWidget {
   final Channel channel;
   final VoidCallback onReadChanged;
+  final VoidCallback? onSelfChannel;
 
-  const _ThreadTile({required this.channel, required this.onReadChanged});
+  const _ThreadTile({
+    required this.channel,
+    required this.onReadChanged,
+    this.onSelfChannel,
+  });
 
   static const _orange = Color(0xFFF68B1F);
 
   @override
   Widget build(BuildContext context) {
+    if (channel.state == null) {
+      return FutureBuilder<void>(
+        future: channel.watch(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const SizedBox(height: 76);
+          }
+          if (snapshot.hasError) return const SizedBox.shrink();
+          return _ThreadTile(
+            channel: channel,
+            onReadChanged: onReadChanged,
+            onSelfChannel: onSelfChannel,
+          );
+        },
+      );
+    }
+
     final otherUser = _otherUser(channel);
+    if (otherUser == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => onSelfChannel?.call());
+      return const SizedBox.shrink();
+    }
+
     final lastMessage = _lastMessage(channel);
 
     return StreamBuilder<int>(
@@ -277,7 +375,7 @@ class _ThreadTile extends StatelessWidget {
                           ),
                           Text(
                             _relativeTime(lastMessage?.createdAt ??
-                                channel.lastMessageAt),
+                                _lastMessageAt(channel)),
                             style: TextStyle(
                               fontSize: 12,
                               color: unread > 0
@@ -689,6 +787,14 @@ Message? _lastMessage(Channel channel) {
   final messages = channel.state?.messages ?? const <Message>[];
   if (messages.isEmpty) return null;
   return messages.last;
+}
+
+DateTime? _lastMessageAt(Channel channel) {
+  return channel.state?.channelState.channel?.lastMessageAt;
+}
+
+String _channelKey(Channel channel) {
+  return channel.cid ?? '${channel.type}:${channel.id ?? channel.hashCode}';
 }
 
 String _conversationName(Channel channel, User? otherUser) {

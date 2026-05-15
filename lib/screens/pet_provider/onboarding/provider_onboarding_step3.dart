@@ -29,9 +29,16 @@ class _ProviderOnboardingStep3State extends State<ProviderOnboardingStep3> {
   String _selectedDuration = '1 hour';
 
   final _priceCtrl = TextEditingController();
+  String _selectedPricingUnit = 'per_session';
 
   static const _categories = ['Grooming', 'Wellness', 'Boarding', 'Training', 'Veterinary'];
   static const _durations = ['30 min', '1 hour', '1.5 hours', '2 hours', '3 hours', '4 hours', 'Full day'];
+  static const _pricingUnits = [
+    ('per_session', 'Per Session'),
+    ('per_hour', 'Per Hour'),
+    ('per_night', 'Per Night'),
+    ('per_day', 'Per Day'),
+  ];
 
   @override
   void initState() {
@@ -63,9 +70,12 @@ class _ProviderOnboardingStep3State extends State<ProviderOnboardingStep3> {
     }
   }
 
-  bool get _canProceed =>
-      _serviceNameCtrl.text.trim().isNotEmpty &&
-      _priceCtrl.text.trim().isNotEmpty;
+  bool get _canProceed {
+    final price = double.tryParse(_priceCtrl.text.trim());
+    return _serviceNameCtrl.text.trim().isNotEmpty &&
+        price != null &&
+        price > 0;
+  }
 
   void _goToStep4() {
     Navigator.push(
@@ -80,6 +90,7 @@ class _ProviderOnboardingStep3State extends State<ProviderOnboardingStep3> {
           serviceName: _serviceNameCtrl.text.trim(),
           duration: _selectedDuration,
           price: double.tryParse(_priceCtrl.text.trim()) ?? 0,
+          pricingUnit: _selectedPricingUnit,
         ),
       ),
     );
@@ -183,24 +194,55 @@ class _ProviderOnboardingStep3State extends State<ProviderOnboardingStep3> {
                 ),
               ),
               const SizedBox(height: 20),
-              const Text('Price (KSh)', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+              const Text('Pricing', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
               const SizedBox(height: 8),
-              TextField(
-                controller: _priceCtrl,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: InputDecoration(
-                  hintText: '0.00',
-                  hintStyle: const TextStyle(color: Colors.black38),
-                  prefixText: 'KSh  ',
-                  prefixStyle: const TextStyle(color: Colors.black54, fontWeight: FontWeight.w500),
-                  filled: true,
-                  fillColor: Colors.white,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
+              Row(
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: TextField(
+                      controller: _priceCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: InputDecoration(
+                        hintText: '0.00',
+                        hintStyle: const TextStyle(color: Colors.black38),
+                        prefixText: 'KSh  ',
+                        prefixStyle: const TextStyle(color: Colors.black54, fontWeight: FontWeight.w500),
+                        filled: true,
+                        fillColor: Colors.white,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
                   ),
-                ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    flex: 2,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: _selectedPricingUnit,
+                          isExpanded: true,
+                          icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 18),
+                          items: _pricingUnits.map((u) {
+                            return DropdownMenuItem(value: u.$1, child: Text(u.$2, style: const TextStyle(fontSize: 13)));
+                          }).toList(),
+                          onChanged: (val) {
+                            if (val != null) setState(() => _selectedPricingUnit = val);
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 12),
               const Text(

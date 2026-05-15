@@ -68,6 +68,20 @@ class AdminService {
     }
   }
 
+  Future<Map<String, dynamic>> toggleBan({
+    required String userId,
+    required bool isBanned,
+  }) async {
+    final res = await ApiService.instance.patch('/admin/users/$userId', {
+      'isBanned': isBanned,
+    });
+    if (res.statusCode == 200) {
+      return jsonDecode(res.body) as Map<String, dynamic>;
+    }
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    throw Exception(body['message']?.toString() ?? 'Could not update user');
+  }
+
   Future<Map<String, dynamic>> bookings({
     String status = 'all',
     int page = 1,
@@ -176,6 +190,25 @@ class AdminService {
     if (res.statusCode == 200)
       return jsonDecode(res.body) as Map<String, dynamic>;
     throw Exception('Could not load user summary report');
+  }
+
+  Future<Map<String, dynamic>> petOwnership({int minPets = 0}) async {
+    final res = await ApiService.instance
+        .get('/admin/reports/pet-ownership?minPets=$minPets');
+    if (res.statusCode == 200)
+      return jsonDecode(res.body) as Map<String, dynamic>;
+    throw Exception('Could not load pet ownership report');
+  }
+
+  Future<Map<String, dynamic>> petActivity({String? species}) async {
+    final query = <String>[];
+    if (species != null && species != 'all') query.add('species=$species');
+    final res = await ApiService.instance.get(
+      '/admin/reports/pet-activity${query.isEmpty ? '' : '?${query.join('&')}'}',
+    );
+    if (res.statusCode == 200)
+      return jsonDecode(res.body) as Map<String, dynamic>;
+    throw Exception('Could not load pet activity report');
   }
 
   Future<void> warnUser(String userId) async {

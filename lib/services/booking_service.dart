@@ -13,15 +13,18 @@ class BookingService {
     required String serviceId,
     required DateTime date,
     required String time,
+    String? petId,
   }) async {
     final bookingDatetime = _buildIso(date, time);
+    final body = <String, dynamic>{
+      'providerId': providerId,
+      'serviceId': serviceId,
+      'bookingDatetime': bookingDatetime,
+    };
+    if (petId != null) body['petId'] = petId;
 
     try {
-      final res = await ApiService.instance.post('/bookings', {
-        'providerId': providerId,
-        'serviceId': serviceId,
-        'bookingDatetime': bookingDatetime,
-      });
+      final res = await ApiService.instance.post('/bookings', body);
       if (res.statusCode == 200 || res.statusCode == 201) {
         return jsonDecode(res.body) as Map<String, dynamic>;
       }
@@ -48,15 +51,63 @@ class BookingService {
     }
   }
 
+  Future<Map<String, dynamic>> getProviderEarnings() async {
+    try {
+      final res = await ApiService.instance.get('/bookings/provider/earnings');
+      if (res.statusCode == 200) {
+        return jsonDecode(res.body) as Map<String, dynamic>;
+      }
+      return {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<Map<String, dynamic>> getOwnerSpending() async {
+    try {
+      final res = await ApiService.instance.get('/bookings/owner/spending');
+      if (res.statusCode == 200) {
+        return jsonDecode(res.body) as Map<String, dynamic>;
+      }
+      return {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<List<PetSummary>> getPets() async {
+    try {
+      final res = await ApiService.instance.get('/pets/me');
+      if (res.statusCode == 200) {
+        final list = jsonDecode(res.body) as List<dynamic>;
+        return list
+            .map((e) => PetSummary.fromJson(e as Map<String, dynamic>))
+            .toList();
+      }
+      return [];
+    } catch (_) {
+      return [];
+    }
+  }
+
   /// Returns the authenticated user's bookings list.
   Future<List<BookingRecord>> getBookings() async {
     try {
       final res = await ApiService.instance.get('/bookings');
       if (res.statusCode == 200) {
-        final list = jsonDecode(res.body) as List<dynamic>;
-        return list
-            .map((e) => BookingRecord.fromJson(e as Map<String, dynamic>))
-            .toList();
+        final decoded = jsonDecode(res.body);
+        final list = decoded is List<dynamic>
+            ? decoded
+            : ((decoded as Map<String, dynamic>)['bookings'] ??
+                decoded['data'] ??
+                const <dynamic>[]) as List<dynamic>;
+        final bookings = <BookingRecord>[];
+        for (final item in list) {
+          try {
+            bookings.add(BookingRecord.fromJson(item as Map<String, dynamic>));
+          } catch (_) {}
+        }
+        return bookings;
       }
       return [];
     } catch (_) {
@@ -66,6 +117,22 @@ class BookingService {
 
   Future<void> cancelBooking(String bookingId) async {
     await ApiService.instance.patch('/bookings/$bookingId/cancel', {});
+  }
+
+  Future<Map<String, dynamic>> rescheduleBooking(
+      String bookingId, DateTime newDatetime) async {
+    final res = await ApiService.instance.post(
+      '/bookings/$bookingId/reschedule',
+      {'newDatetime': newDatetime.toUtc().toIso8601String()},
+    );
+    if (res.statusCode == 200 || res.statusCode == 201) {
+      return jsonDecode(res.body) as Map<String, dynamic>;
+    }
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    final msg = body['message'];
+    throw Exception(
+        (msg is List ? msg.first : msg) as String? ??
+        'Could not reschedule booking');
   }
 
   Future<List<ProviderBookingRecord>> getProviderBookings() async {

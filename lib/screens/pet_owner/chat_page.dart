@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:boo/services/auth_service.dart';
 import 'package:boo/services/stream_chat_service.dart';
 import 'package:flutter/material.dart';
 import 'package:stream_chat_flutter/stream_chat_flutter.dart';
@@ -11,6 +14,7 @@ class ChatPage extends StatefulWidget {
 
 class _ChatPageState extends State<ChatPage> {
   late final Future<Stream<List<Channel>>?> _channelsFuture;
+  final Set<String> _hiddenChannelKeys = {};
 
   @override
   void initState() {
@@ -34,6 +38,29 @@ class _ChatPageState extends State<ChatPage> {
       watch: true,
       state: true,
     );
+  }
+
+  Future<bool> _hideChannel(Channel channel) async {
+    try {
+      await channel.hide();
+      if (mounted) {
+        setState(() => _hiddenChannelKeys.add(_channelKey(channel)));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Chat deleted')),
+        );
+      }
+      return true;
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not delete chat. Please try again.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return false;
+    }
   }
 
   @override
@@ -105,7 +132,12 @@ class _ChatPageState extends State<ChatPage> {
                         channels.isEmpty) {
                       return const Center(child: CircularProgressIndicator());
                     }
-                    if (channels.isEmpty) {
+                    final visibleChannels = channels
+                        .where((c) =>
+                            !_isSelfChannel(c) &&
+                            !_hiddenChannelKeys.contains(_channelKey(c)))
+                        .toList();
+                    if (visibleChannels.isEmpty) {
                       return const _EmptyState(
                         title: 'No messages yet',
                         message:
@@ -114,13 +146,27 @@ class _ChatPageState extends State<ChatPage> {
                     }
                     return ListView.separated(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
-                      itemCount: channels.length,
+                      itemCount: visibleChannels.length,
                       separatorBuilder: (_, __) =>
                           const Divider(height: 1, color: Color(0xFFEAECEF)),
-                      itemBuilder: (context, i) => _ThreadTile(
-                        channel: channels[i],
-                        onReadChanged: () => setState(() {}),
-                      ),
+                      itemBuilder: (context, i) {
+                        final channel = visibleChannels[i];
+                        return _DismissibleThread(
+                          channel: channel,
+                          onDelete: () => _hideChannel(channel),
+                          child: _ThreadTile(
+                            channel: channel,
+                            onReadChanged: () => setState(() {}),
+                            onSelfChannel: () {
+                              setState(
+                                () => _hiddenChannelKeys
+                                    .add(_channelKey(channel)),
+                              );
+                              channel.hide().catchError((_) {});
+                            },
+                          ),
+                        );
+                      },
                     );
                   },
                 );
@@ -133,17 +179,75 @@ class _ChatPageState extends State<ChatPage> {
   }
 }
 
+class _DismissibleThread extends StatelessWidget {
+  final Channel channel;
+  final Widget child;
+  final Future<bool> Function() onDelete;
+
+  const _DismissibleThread({
+    required this.channel,
+    required this.child,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Dismissible(
+      key: ValueKey(_channelKey(channel)),
+      direction: DismissDirection.endToStart,
+      confirmDismiss: (_) => onDelete(),
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 18),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEF4444),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: const Icon(Icons.delete_outline_rounded, color: Colors.white),
+      ),
+      child: child,
+    );
+  }
+}
+
 class _ThreadTile extends StatelessWidget {
   final Channel channel;
   final VoidCallback onReadChanged;
+  final VoidCallback? onSelfChannel;
 
-  const _ThreadTile({required this.channel, required this.onReadChanged});
+  const _ThreadTile({
+    required this.channel,
+    required this.onReadChanged,
+    this.onSelfChannel,
+  });
 
   static const orange = Color(0xFFF68B1F);
 
   @override
   Widget build(BuildContext context) {
+    if (channel.state == null) {
+      return FutureBuilder<void>(
+        future: channel.watch(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const SizedBox(height: 76);
+          }
+          if (snapshot.hasError) return const SizedBox.shrink();
+          return _ThreadTile(
+            channel: channel,
+            onReadChanged: onReadChanged,
+            onSelfChannel: onSelfChannel,
+          );
+        },
+      );
+    }
+
     final otherUser = _otherUser(channel);
+    if (otherUser == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => onSelfChannel?.call());
+      return const SizedBox.shrink();
+    }
+
     final lastMessage = _lastMessage(channel);
 
     return StreamBuilder<int>(
@@ -206,7 +310,7 @@ class _ThreadTile extends StatelessWidget {
                           ),
                           Text(
                             _relativeTime(lastMessage?.createdAt ??
-                                channel.lastMessageAt),
+                                _lastMessageAt(channel)),
                             style: TextStyle(
                               fontSize: 12,
                               color:
@@ -287,12 +391,14 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
   final _ctrl = TextEditingController();
   final _scrollCtrl = ScrollController();
   late final Future<void> _watchFuture;
+  late final Future<bool> _providerVerifiedFuture;
   String? _lastMarkedMessageId;
 
   @override
   void initState() {
     super.initState();
     _watchFuture = _watchChannel();
+    _providerVerifiedFuture = _loadProviderVerification();
   }
 
   Future<void> _watchChannel() async {
@@ -336,7 +442,6 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
   @override
   Widget build(BuildContext context) {
     final otherUser = _otherUser(widget.channel);
-    final isVerifiedProvider = _isVerifiedProvider(widget.channel, otherUser);
     return Scaffold(
       backgroundColor: const Color(0xFFF6F7FB),
       appBar: AppBar(
@@ -383,89 +488,132 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
           if (snapshot.connectionState != ConnectionState.done) {
             return const Center(child: CircularProgressIndicator());
           }
-          return Column(
-            children: [
-              _SafetyCheckBanner(isVerified: isVerifiedProvider),
-              if (!isVerifiedProvider) const _UnverifiedProviderWarning(),
-              Expanded(
-                child: StreamBuilder<List<Message>>(
-                  stream: widget.channel.state?.messagesStream,
-                  initialData: widget.channel.state?.messages,
-                  builder: (context, snapshot) {
-                    final messages = snapshot.data ?? const <Message>[];
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (mounted) _markRead();
-                    });
-                    return ListView.builder(
-                      controller: _scrollCtrl,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                      itemCount: messages.length,
-                      itemBuilder: (_, i) => _Bubble(message: messages[i]),
-                    );
-                  },
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  border: Border(
-                    top: BorderSide(color: Colors.black.withOpacity(0.06)),
+          return FutureBuilder<bool>(
+            future: _providerVerifiedFuture,
+            builder: (context, verificationSnapshot) {
+              final verificationReady =
+                  verificationSnapshot.connectionState == ConnectionState.done;
+              final isVerifiedProvider = verificationSnapshot.data ?? false;
+              return Column(
+                children: [
+                  if (otherUser != null) ...[
+                    if (verificationReady) ...[
+                      _SafetyCheckBanner(isVerified: isVerifiedProvider),
+                      if (!isVerifiedProvider) const _UnverifiedProviderWarning(),
+                    ] else
+                      const _SafetyCheckLoadingBanner(),
+                  ],
+                  Expanded(
+                    child: StreamBuilder<List<Message>>(
+                      stream: widget.channel.state?.messagesStream,
+                      initialData: widget.channel.state?.messages,
+                      builder: (context, snapshot) {
+                        final messages = snapshot.data ?? const <Message>[];
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (mounted) _markRead();
+                        });
+                        return ListView.builder(
+                          controller: _scrollCtrl,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                          itemCount: messages.length,
+                          itemBuilder: (_, i) => _Bubble(message: messages[i]),
+                        );
+                      },
+                    ),
                   ),
-                ),
-                child: SafeArea(
-                  top: false,
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _ctrl,
-                          style: const TextStyle(fontSize: 14),
-                          decoration: InputDecoration(
-                            hintText: 'Type a message...',
-                            filled: true,
-                            fillColor: const Color(0xFFF3F4F6),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 10,
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(24),
-                              borderSide: BorderSide.none,
-                            ),
-                          ),
-                          onSubmitted: (_) => _send(),
-                        ),
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      border: Border(
+                        top: BorderSide(color: Colors.black.withOpacity(0.06)),
                       ),
-                      const SizedBox(width: 8),
-                      GestureDetector(
-                        onTap: _send,
-                        child: Container(
-                          width: 42,
-                          height: 42,
-                          decoration: const BoxDecoration(
-                            color: orange,
-                            shape: BoxShape.circle,
+                    ),
+                    child: SafeArea(
+                      top: false,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _ctrl,
+                              style: const TextStyle(fontSize: 14),
+                              decoration: InputDecoration(
+                                hintText: 'Type a message...',
+                                filled: true,
+                                fillColor: const Color(0xFFF3F4F6),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 10,
+                                ),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(24),
+                                  borderSide: BorderSide.none,
+                                ),
+                              ),
+                              onSubmitted: (_) => _send(),
+                            ),
                           ),
-                          child: const Icon(
-                            Icons.send_rounded,
-                            color: Colors.white,
-                            size: 18,
+                          const SizedBox(width: 8),
+                          GestureDetector(
+                            onTap: _send,
+                            child: Container(
+                              width: 42,
+                              height: 42,
+                              decoration: const BoxDecoration(
+                                color: orange,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.send_rounded,
+                                color: Colors.white,
+                                size: 18,
+                              ),
+                            ),
                           ),
-                        ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
-                ),
-              ),
-            ],
+                ],
+              );
+            },
           );
         },
       ),
     );
+  }
+
+  Future<bool> _loadProviderVerification() async {
+    final channelExtra = widget.channel.extraData;
+    final directVerification = channelExtra['provider_is_verified'];
+    if (directVerification is bool) return directVerification;
+
+    final directStatus = channelExtra['provider_verification_status'] ??
+        channelExtra['providerVerificationStatus'];
+    if (directStatus is String && directStatus.isNotEmpty) {
+      final normalized = directStatus.toLowerCase();
+      if (normalized == 'verified' || normalized == 'approved') return true;
+      if (normalized == 'unverified' || normalized == 'pending') return false;
+    }
+
+    final providerId = widget.channel.extraData['provider_id']?.toString();
+    if (providerId == null || providerId.isEmpty) {
+      return _isVerifiedProvider(widget.channel, _otherUser(widget.channel));
+    }
+
+    try {
+      final res = await ApiService.instance.get('/providers/$providerId');
+      if (res.statusCode == 200) {
+        final body = jsonDecode(res.body) as Map<String, dynamic>;
+        return body['isVerified'] as bool? ?? false;
+      }
+    } catch (_) {
+      // Fall back to any Stream metadata if the provider lookup fails.
+    }
+    return _isVerifiedProvider(widget.channel, _otherUser(widget.channel));
   }
 }
 
@@ -519,6 +667,33 @@ class _UnverifiedProviderWarning extends StatelessWidget {
           height: 1.35,
           color: Color(0xFF7C2D12),
           fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+class _SafetyCheckLoadingBanner extends StatelessWidget {
+  const _SafetyCheckLoadingBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: const Text(
+        'Safety Check\nChecking provider verification status...',
+        style: TextStyle(
+          fontSize: 12,
+          height: 1.35,
+          color: Color(0xFF374151),
+          fontWeight: FontWeight.w600,
         ),
       ),
     );
@@ -689,13 +864,28 @@ User? _otherUser(Channel channel) {
     final user = member.user;
     if (user != null && user.id != currentUserId) return user;
   }
-  return members.isNotEmpty ? members.first.user : null;
+  return null;
+}
+
+// A channel is a self-channel if members are loaded AND none of them is someone else.
+bool _isSelfChannel(Channel channel) {
+  final members = channel.state?.members;
+  if (members == null || members.isEmpty) return false;
+  return _otherUser(channel) == null;
+}
+
+String _channelKey(Channel channel) {
+  return channel.cid ?? '${channel.type}:${channel.id ?? channel.hashCode}';
 }
 
 Message? _lastMessage(Channel channel) {
   final messages = channel.state?.messages ?? const <Message>[];
   if (messages.isEmpty) return null;
   return messages.last;
+}
+
+DateTime? _lastMessageAt(Channel channel) {
+  return channel.state?.channelState.channel?.lastMessageAt;
 }
 
 String _conversationName(Channel channel, User? otherUser) {

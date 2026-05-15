@@ -28,6 +28,11 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
   bool _loading = false;
   bool _isSubmitting = false;
 
+  // Pet selector
+  List<PetSummary> _pets = [];
+  PetSummary? _selectedPet;
+  bool _petsLoading = true;
+
   // Availability: dayOfWeek (0=Sun..6=Sat) → AvailabilityDay
   Map<int, AvailabilityDay> _availability = {};
   bool _availabilityLoaded = false;
@@ -37,6 +42,16 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
     super.initState();
     _focusedMonth = DateTime.now();
     _loadAvailability();
+    _loadPets();
+  }
+
+  Future<void> _loadPets() async {
+    final pets = await BookingService.instance.getPets();
+    if (!mounted) return;
+    setState(() {
+      _pets = pets;
+      _petsLoading = false;
+    });
   }
 
   Future<void> _loadAvailability() async {
@@ -173,6 +188,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
         serviceId: widget.service.id,
         date: _selectedDate!,
         time: _selectedTime!,
+        petId: _selectedPet?.id,
       );
     } on BookingException catch (e) {
       errorMessage = e.message;
@@ -202,7 +218,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
   @override
   Widget build(BuildContext context) {
     final days = _daysInMonth(_focusedMonth);
-    final canBook = _selectedDate != null && _selectedTime != null;
+    final canBook = _selectedPet != null && _selectedDate != null && _selectedTime != null;
 
     return Scaffold(
       backgroundColor: bg,
@@ -220,6 +236,18 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
             const SizedBox(height: 14),
             _ServiceSelectedCard(service: widget.service),
             const SizedBox(height: 18),
+
+            // Pet selector
+            const Text('Who is this for?',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 12),
+            _PetSelector(
+              pets: _pets,
+              selected: _selectedPet,
+              loading: _petsLoading,
+              onSelected: (pet) => setState(() => _selectedPet = pet),
+            ),
+            const SizedBox(height: 20),
 
             // Calendar
             Container(
@@ -457,6 +485,113 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _PetSelector extends StatelessWidget {
+  final List<PetSummary> pets;
+  final PetSummary? selected;
+  final bool loading;
+  final ValueChanged<PetSummary> onSelected;
+
+  static const orange = Color(0xFFF68B1F);
+
+  const _PetSelector({
+    required this.pets,
+    required this.selected,
+    required this.loading,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) {
+      return const SizedBox(
+        height: 90,
+        child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+      );
+    }
+    if (pets.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF7ED),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFFED7AA)),
+        ),
+        child: const Row(
+          children: [
+            Icon(Icons.info_outline, color: Color(0xFFEA580C), size: 18),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Add your pets in Profile → My Pets before booking.',
+                style: TextStyle(color: Color(0xFF9A3412), fontSize: 13),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    return SizedBox(
+      height: 100,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: pets.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        itemBuilder: (context, i) {
+          final pet = pets[i];
+          final isSelected = selected?.id == pet.id;
+          return GestureDetector(
+            onTap: () => onSelected(pet),
+            child: Container(
+              width: 80,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: isSelected ? const Color(0xFFFFF7ED) : Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: isSelected ? orange : const Color(0xFFEAECEF),
+                  width: isSelected ? 2 : 1,
+                ),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircleAvatar(
+                    radius: 24,
+                    backgroundColor: isSelected
+                        ? orange.withValues(alpha: 0.15)
+                        : const Color(0xFFF3F4F6),
+                    backgroundImage:
+                        pet.photoUrl != null && pet.photoUrl!.isNotEmpty
+                            ? NetworkImage(pet.photoUrl!)
+                            : null,
+                    child: pet.photoUrl == null || pet.photoUrl!.isEmpty
+                        ? Icon(Icons.pets,
+                            size: 22,
+                            color: isSelected ? orange : const Color(0xFF9CA3AF))
+                        : null,
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    pet.name,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: isSelected ? orange : const Color(0xFF374151),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }

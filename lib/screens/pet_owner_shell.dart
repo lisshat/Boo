@@ -16,6 +16,7 @@ class PetOwnerShell extends StatefulWidget {
 
 class _PetOwnerShellState extends State<PetOwnerShell> {
   late int _index;
+  int _bookingsGeneration = 0;
 
   @override
   void initState() {
@@ -23,20 +24,25 @@ class _PetOwnerShellState extends State<PetOwnerShell> {
     _index = widget.initialIndex;
   }
 
-  final _pages = const [
-    HomeDashboardPage(),
-    BookingsPage(),
-    ChatPage(),
-    ProfilePage(),
-  ];
-
   @override
   Widget build(BuildContext context) {
+    final pages = [
+      const HomeDashboardPage(),
+      BookingsPage(key: ValueKey(_bookingsGeneration)),
+      const ChatPage(),
+      const ProfilePage(),
+    ];
+
     return Scaffold(
-      body: IndexedStack(index: _index, children: _pages),
+      body: IndexedStack(index: _index, children: pages),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
+        onDestinationSelected: (i) {
+          setState(() {
+            if (i == 1 && _index != 1) _bookingsGeneration++;
+            _index = i;
+          });
+        },
         destinations: [
           const NavigationDestination(
               icon: Icon(Icons.home_outlined), label: 'Home'),

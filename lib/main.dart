@@ -11,10 +11,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:boo/screens/pet_provider/provider_profile_screen.dart';
 import 'package:boo/screens/pet_provider/provider_shell.dart';
+import 'package:boo/services/favorites_service.dart';
 import 'package:boo/services/stream_chat_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await FavoritesManager.instance.load();
   runApp(const MyApp());
 }
 

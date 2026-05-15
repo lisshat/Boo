@@ -1,5 +1,26 @@
 enum ProviderType { boarding, sitter, groomer, vet }
 
+class PetSummary {
+  final String id;
+  final String name;
+  final String species;
+  final String? photoUrl;
+
+  const PetSummary({
+    required this.id,
+    required this.name,
+    required this.species,
+    this.photoUrl,
+  });
+
+  factory PetSummary.fromJson(Map<String, dynamic> json) => PetSummary(
+        id: json['petId'] as String,
+        name: json['name'] as String? ?? 'Pet',
+        species: json['species'] as String? ?? 'other',
+        photoUrl: json['photoUrl'] as String?,
+      );
+}
+
 class ProviderModel {
   final String id;
   final String userId;
@@ -43,10 +64,17 @@ class ProviderModel {
         .toList();
 
     final firstCategory = services.isNotEmpty ? services.first.category : null;
+    final user = json['user'] as Map<String, dynamic>?;
 
     return ProviderModel(
       id: json['id'] as String,
-      userId: json['userId'] as String? ?? json['user_id'] as String? ?? '',
+      userId: json['userId'] as String? ??
+          json['providerUserId'] as String? ??
+          json['user_id'] as String? ??
+          json['provider_user_id'] as String? ??
+          user?['id'] as String? ??
+          user?['userId'] as String? ??
+          '',
       name: json['businessName'] as String? ?? 'Provider',
       type: _categoryToType(firstCategory),
       imageUrl: json['profilePhotoUrl'] as String? ??
@@ -211,9 +239,12 @@ class AvailabilityDay {
 }
 
 enum BookingStatus {
+  pending,
+  accepted,
   upcoming,
   completed,
   cancelled,
+  rescheduled,
   pendingReschedule,
   reviewPending,
   declined
@@ -230,6 +261,7 @@ class BookingRecord {
   final DateTime bookingDatetime;
   final BookingStatus status;
   final String? declineReason;
+  final String? rescheduledFrom;
 
   const BookingRecord({
     required this.id,
@@ -242,24 +274,33 @@ class BookingRecord {
     required this.bookingDatetime,
     required this.status,
     this.declineReason,
+    this.rescheduledFrom,
   });
 
   factory BookingRecord.fromJson(Map<String, dynamic> json) {
-    final dt = DateTime.parse(json['bookingDatetime'] as String).toLocal();
+    final rawDatetime = json['bookingDatetime'] ?? json['booking_datetime'];
+    final dt = DateTime.parse(rawDatetime.toString()).toLocal();
     final provider = json['provider'] as Map<String, dynamic>? ?? {};
     final service = json['service'] as Map<String, dynamic>? ?? {};
     final price = double.tryParse(service['price']?.toString() ?? '0') ?? 0;
     return BookingRecord(
-      id: json['bookingId'] as String,
-      providerName: (provider['businessName'] as String?) ?? 'Unknown provider',
+      id: (json['bookingId'] ?? json['booking_id'] ?? json['id']).toString(),
+      providerName: (provider['businessName'] as String?) ??
+          (provider['business_name'] as String?) ??
+          'Unknown provider',
       providerImageUrl: '',
-      serviceName: (service['serviceName'] as String?) ?? 'Service',
+      serviceName: (service['serviceName'] as String?) ??
+          (service['service_name'] as String?) ??
+          'Service',
       priceLabel: _formatPrice(price),
       date: DateTime(dt.year, dt.month, dt.day),
       time: _formatTime(dt),
       bookingDatetime: dt,
-      status: _parseStatus(json['status'] as String),
-      declineReason: json['declineReason'] as String?,
+      status: _parseStatus(json['status']?.toString() ?? 'pending'),
+      declineReason:
+          (json['declineReason'] ?? json['decline_reason']) as String?,
+      rescheduledFrom:
+          (json['rescheduledFrom'] ?? json['rescheduled_from']) as String?,
     );
   }
 
@@ -280,12 +321,20 @@ class BookingRecord {
 
   static BookingStatus _parseStatus(String s) {
     switch (s) {
+      case 'pending':
+        return BookingStatus.pending;
+      case 'accepted':
+        return BookingStatus.accepted;
+      case 'upcoming':
+        return BookingStatus.upcoming;
       case 'completed':
         return BookingStatus.completed;
       case 'cancelled':
         return BookingStatus.cancelled;
       case 'declined':
         return BookingStatus.declined;
+      case 'rescheduled':
+        return BookingStatus.rescheduled;
       case 'pending_reschedule':
         return BookingStatus.pendingReschedule;
       case 'review_pending':
@@ -296,7 +345,7 @@ class BookingRecord {
   }
 }
 
-enum ProviderBookingStatus { pending, accepted, declined, cancelled, completed }
+enum ProviderBookingStatus { pending, accepted, declined, cancelled, completed, rescheduled }
 
 class ProviderBookingRecord {
   final String id;
@@ -310,6 +359,7 @@ class ProviderBookingRecord {
   final String time;
   final DateTime bookingDatetime;
   final ProviderBookingStatus status;
+  final String? rescheduledFrom;
 
   const ProviderBookingRecord({
     required this.id,
@@ -323,7 +373,10 @@ class ProviderBookingRecord {
     required this.time,
     required this.bookingDatetime,
     required this.status,
+    this.rescheduledFrom,
   });
+
+  bool get isRescheduledBooking => rescheduledFrom != null;
 
   factory ProviderBookingRecord.fromJson(Map<String, dynamic> json) {
     final dt = DateTime.parse(json['bookingDatetime'] as String).toLocal();
@@ -342,6 +395,7 @@ class ProviderBookingRecord {
       time: _formatTime(dt),
       bookingDatetime: dt,
       status: _parseStatus(json['status'] as String),
+      rescheduledFrom: json['rescheduledFrom'] as String?,
     );
   }
 
@@ -388,6 +442,8 @@ class ProviderBookingRecord {
         return ProviderBookingStatus.cancelled;
       case 'completed':
         return ProviderBookingStatus.completed;
+      case 'rescheduled':
+        return ProviderBookingStatus.rescheduled;
       default:
         return ProviderBookingStatus.pending;
     }

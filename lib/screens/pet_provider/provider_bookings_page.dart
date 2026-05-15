@@ -120,7 +120,8 @@ class _ProviderBookingsPageState extends State<ProviderBookingsPage>
         .where((b) =>
             b.status == ProviderBookingStatus.completed ||
             b.status == ProviderBookingStatus.cancelled ||
-            b.status == ProviderBookingStatus.declined)
+            b.status == ProviderBookingStatus.declined ||
+            b.status == ProviderBookingStatus.rescheduled)
         .toList();
 
     return Scaffold(
@@ -343,6 +344,34 @@ class _BookingCardBase extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
+          if (booking.isRescheduledBooking) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              margin: const EdgeInsets.only(bottom: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF3CD),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.4)),
+              ),
+              child: const Row(
+                children: [
+                  Text('📅', style: TextStyle(fontSize: 13)),
+                  SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Rescheduled booking — owner changed the time',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF92400E),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
@@ -550,17 +579,12 @@ class _BookingCardState extends State<_BookingCard> {
         throw Exception('Chat is unavailable. Please log in again.');
       }
 
-      final members = [providerUserId, ownerId]..sort();
-      final channel = streamService.client.channel(
-        'messaging',
-        id: 'booking_${widget.booking.id}',
+      final channel = await streamService.directMessagingChannel(
+        otherUserId: ownerId,
         extraData: {
-          'members': members,
-          'name': widget.booking.ownerName,
-          'booking_id': widget.booking.id,
+          'latest_booking_id': widget.booking.id,
         },
       );
-      await channel.watch();
 
       if (!mounted) return;
       await Navigator.of(context).push(

@@ -29,6 +29,30 @@ class BooStreamChatService {
     return activeClient;
   }
 
+  Future<Channel> directMessagingChannel({
+    required String otherUserId,
+    Map<String, Object?> extraData = const {},
+  }) async {
+    final currentId = currentUserId;
+    if (currentId == null) {
+      throw StateError('Stream Chat user is not connected');
+    }
+    if (otherUserId == currentId) {
+      throw StateError("You can't message your own profile.");
+    }
+
+    final members = [currentId, otherUserId]..sort();
+    final channel = client.channel(
+      'messaging',
+      extraData: {
+        ...extraData,
+        'members': members,
+      },
+    );
+    await channel.watch();
+    return channel;
+  }
+
   Future<void> saveSessionFromAuthPayload(Map<String, dynamic> body) async {
     final user = body['user'] as Map<String, dynamic>?;
     final streamToken = body['stream_token'] as String?;

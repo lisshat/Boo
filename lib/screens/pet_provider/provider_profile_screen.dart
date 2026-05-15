@@ -1,5 +1,6 @@
 import 'package:boo/screens/pet_owner/book_appointment_screen.dart';
 import 'package:boo/screens/pet_owner/chat_page.dart';
+import 'package:boo/services/auth_service.dart';
 import 'package:boo/services/favorites_service.dart';
 import 'package:boo/services/reviews_service.dart';
 import 'package:boo/services/stream_chat_service.dart';
@@ -100,16 +101,35 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
         throw Exception('Chat is unavailable. Please log in again.');
       }
 
-      final members = [currentUserId, providerUserId]..sort();
-      final channel = streamService.client.channel(
-        'messaging',
+      if (currentUserId == providerUserId) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("You can't message your own provider profile."),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Ensure the provider's Stream user exists before creating the channel.
+      try {
+        await ApiService.instance
+            .post('/providers/${widget.provider.id}/init-chat', {});
+      } catch (_) {}
+
+      final channel = await streamService.directMessagingChannel(
+        otherUserId: providerUserId,
         extraData: {
-          'members': members,
           'name': widget.provider.name,
           'provider_id': widget.provider.id,
+          'provider_is_verified': widget.provider.isVerified,
+          'provider_verification_status': widget.provider.isVerified
+              ? 'verified'
+              : 'unverified',
         },
       );
-      await channel.watch();
 
       if (!mounted) return;
       Navigator.of(context).push(
@@ -119,8 +139,12 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
       );
     } catch (e) {
       if (!mounted) return;
+      final message = e
+          .toString()
+          .replaceFirst('Exception: ', '')
+          .replaceFirst('Bad state: ', '');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
+        SnackBar(content: Text(message), backgroundColor: Colors.red),
       );
     } finally {
       if (mounted) setState(() => _openingChat = false);
