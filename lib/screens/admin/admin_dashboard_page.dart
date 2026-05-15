@@ -1,5 +1,6 @@
 import 'package:boo/screens/admin/admin_theme.dart';
 import 'package:boo/services/admin_service.dart';
+import 'package:boo/utils/pricing_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -19,7 +20,34 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
   @override
   void initState() {
     super.initState();
-    _future = AdminService.instance.stats();
+    _future = _loadDashboard();
+  }
+
+  Future<Map<String, dynamic>> _loadDashboard() async {
+    final stats = await AdminService.instance.stats();
+    try {
+      final bookings = await AdminService.instance.bookings(limit: 1000);
+      final rows = bookings['data'] as List<dynamic>? ?? const [];
+      final completedValue = rows.fold<double>(0, (sum, raw) {
+        final row = raw as Map<String, dynamic>;
+        if (row['status']?.toString() != 'completed') return sum;
+        final service = row['service'] as Map<String, dynamic>? ?? {};
+        final price = double.tryParse(service['price']?.toString() ?? '0') ?? 0;
+        final duration = (service['durationMinutes'] as int?) ??
+            (service['duration_minutes'] as int?) ??
+            0;
+        return sum +
+            bookingTotalAmount(
+              price: price,
+              pricingUnit: (service['pricingUnit'] ?? service['pricing_unit'])
+                  ?.toString(),
+              durationMinutes: duration,
+            );
+      });
+      return {...stats, 'completedBookingValue': completedValue};
+    } catch (_) {
+      return stats;
+    }
   }
 
   Future<void> _exportReport(Map<String, dynamic> stats) async {
@@ -87,9 +115,12 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                 children: [
                   _pdfHeaderRow(['Metric', 'Value'], orange),
                   _pdfDataRow('Total Users', _v(stats, ['users', 'total'])),
-                  _pdfDataRow('Verified Providers', _v(stats, ['verification', 'approved'])),
-                  _pdfDataRow('Pending Verifications', _v(stats, ['verification', 'pending'])),
-                  _pdfDataRow('Active Bookings', _v(stats, ['bookings', 'accepted'])),
+                  _pdfDataRow('Verified Providers',
+                      _v(stats, ['verification', 'approved'])),
+                  _pdfDataRow('Pending Verifications',
+                      _v(stats, ['verification', 'pending'])),
+                  _pdfDataRow(
+                      'Active Bookings', _v(stats, ['bookings', 'accepted'])),
                   _pdfDataRow('Total Reviews', _v(stats, ['reviews', 'total'])),
                   _pdfDataRow('Flagged Users', '${stats['flaggedUsers'] ?? 0}'),
                 ],
@@ -112,7 +143,13 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                 ),
                 children: [
                   _pdfHeaderRow(['Status', 'Count'], orange),
-                  for (final s in ['pending', 'accepted', 'completed', 'cancelled', 'declined'])
+                  for (final s in [
+                    'pending',
+                    'accepted',
+                    'completed',
+                    'cancelled',
+                    'declined'
+                  ])
                     _pdfDataRow(
                       s[0].toUpperCase() + s.substring(1),
                       '${bookings[s] ?? 0}',
@@ -140,7 +177,8 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Export failed: ${e.toString().replaceFirst('Exception: ', '')}'),
+            content: Text(
+                'Export failed: ${e.toString().replaceFirst('Exception: ', '')}'),
             backgroundColor: AdminColors.danger,
           ),
         );
@@ -156,7 +194,8 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       children: labels
           .map(
             (l) => pw.Padding(
-              padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              padding:
+                  const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 6),
               child: pw.Text(
                 l,
                 style: pw.TextStyle(
@@ -212,7 +251,8 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                     children: [
                       Text(
                         'Dashboard Overview',
-                        style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
+                        style: TextStyle(
+                            fontSize: 24, fontWeight: FontWeight.w900),
                       ),
                       SizedBox(height: 4),
                       Text(
@@ -240,7 +280,8 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AdminColors.orange,
                     foregroundColor: Colors.white,
-                    disabledBackgroundColor: AdminColors.orange.withValues(alpha: 0.5),
+                    disabledBackgroundColor:
+                        AdminColors.orange.withValues(alpha: 0.5),
                     disabledForegroundColor: Colors.white,
                   ),
                 ),
@@ -251,12 +292,35 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
               spacing: 16,
               runSpacing: 16,
               children: [
-                _MetricCard(label: 'Total Users', value: _v(stats, ['users', 'total']), icon: Icons.people_outline),
-                _MetricCard(label: 'Verified Providers', value: _v(stats, ['verification', 'approved']), icon: Icons.verified_outlined),
-                _MetricCard(label: 'Pending Reviews', value: _v(stats, ['verification', 'pending']), icon: Icons.rate_review_outlined),
-                _MetricCard(label: 'Active Bookings', value: _v(stats, ['bookings', 'accepted']), icon: Icons.calendar_today_outlined),
-                _MetricCard(label: 'Total Reviews', value: _v(stats, ['reviews', 'total']), icon: Icons.star_outline),
-                _MetricCard(label: 'Flagged Users', value: '${stats?['flaggedUsers'] ?? 0}', icon: Icons.warning_amber_rounded, danger: true),
+                _MetricCard(
+                    label: 'Total Users',
+                    value: _v(stats, ['users', 'total']),
+                    icon: Icons.people_outline),
+                _MetricCard(
+                    label: 'Verified Providers',
+                    value: _v(stats, ['verification', 'approved']),
+                    icon: Icons.verified_outlined),
+                _MetricCard(
+                    label: 'Pending Reviews',
+                    value: _v(stats, ['verification', 'pending']),
+                    icon: Icons.rate_review_outlined),
+                _MetricCard(
+                    label: 'Active Bookings',
+                    value: _v(stats, ['bookings', 'accepted']),
+                    icon: Icons.calendar_today_outlined),
+                _MetricCard(
+                    label: 'Completed Value',
+                    value: formatKsh(stats?['completedBookingValue'] ?? 0),
+                    icon: Icons.payments_outlined),
+                _MetricCard(
+                    label: 'Total Reviews',
+                    value: _v(stats, ['reviews', 'total']),
+                    icon: Icons.star_outline),
+                _MetricCard(
+                    label: 'Flagged Users',
+                    value: '${stats?['flaggedUsers'] ?? 0}',
+                    icon: Icons.warning_amber_rounded,
+                    danger: true),
               ],
             ),
             const SizedBox(height: 24),
@@ -298,14 +362,22 @@ class _MetricCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(icon, size: 18, color: danger ? AdminColors.danger : AdminColors.orange),
+                Icon(icon,
+                    size: 18,
+                    color: danger ? AdminColors.danger : AdminColors.orange),
                 const Spacer(),
-                Text(danger ? 'Alert' : 'Live', style: TextStyle(fontSize: 10, color: danger ? AdminColors.danger : Colors.green)),
+                Text(danger ? 'Alert' : 'Live',
+                    style: TextStyle(
+                        fontSize: 10,
+                        color: danger ? AdminColors.danger : Colors.green)),
               ],
             ),
             const SizedBox(height: 12),
-            Text(value, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900)),
-            Text(label, style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
+            Text(value,
+                style:
+                    const TextStyle(fontSize: 26, fontWeight: FontWeight.w900)),
+            Text(label,
+                style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
           ],
         ),
       ),
@@ -327,22 +399,28 @@ class _BookingsStatusCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Bookings by Status', style: TextStyle(fontWeight: FontWeight.w900)),
+          const Text('Bookings by Status',
+              style: TextStyle(fontWeight: FontWeight.w900)),
           const SizedBox(height: 18),
           for (final row in rows) ...[
             Row(
               children: [
-                SizedBox(width: 90, child: Text(row, style: const TextStyle(fontSize: 12))),
+                SizedBox(
+                    width: 90,
+                    child: Text(row, style: const TextStyle(fontSize: 12))),
                 Expanded(
                   child: LinearProgressIndicator(
                     value: ((bookings[row] as num?)?.toDouble() ?? 0) / total,
-                    color: row == 'completed' ? AdminColors.blue : AdminColors.orange,
+                    color: row == 'completed'
+                        ? AdminColors.blue
+                        : AdminColors.orange,
                     backgroundColor: const Color(0xFFF4E2D4),
                     minHeight: 7,
                   ),
                 ),
                 const SizedBox(width: 10),
-                Text('${bookings[row] ?? 0}', style: const TextStyle(fontSize: 12)),
+                Text('${bookings[row] ?? 0}',
+                    style: const TextStyle(fontSize: 12)),
               ],
             ),
             const SizedBox(height: 16),
@@ -400,7 +478,8 @@ class _RecentActivityRow extends StatelessWidget {
     final adminName = admin?['full_name']?.toString() ??
         row['admin_name']?.toString() ??
         'Admin';
-    final action = row['action']?.toString().replaceAll('_', ' ') ?? 'admin action';
+    final action =
+        row['action']?.toString().replaceAll('_', ' ') ?? 'admin action';
     final targetType = row['target_type']?.toString();
     final performedAt = row['performed_at']?.toString();
     return Padding(
@@ -420,12 +499,14 @@ class _RecentActivityRow extends StatelessWidget {
               children: [
                 Text(
                   adminName,
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                  style: const TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.w800),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   targetType == null ? action : '$action - $targetType',
-                  style: const TextStyle(fontSize: 11, color: AdminColors.muted),
+                  style:
+                      const TextStyle(fontSize: 11, color: AdminColors.muted),
                 ),
               ],
             ),

@@ -1,5 +1,6 @@
 import 'package:boo/screens/admin/admin_theme.dart';
 import 'package:boo/services/admin_service.dart';
+import 'package:boo/utils/pricing_utils.dart';
 import 'package:flutter/material.dart';
 
 class AdminBookingsPage extends StatefulWidget {
@@ -19,7 +20,8 @@ class _AdminBookingsPageState extends State<AdminBookingsPage> {
     _future = _load();
   }
 
-  Future<Map<String, dynamic>> _load() => AdminService.instance.bookings(status: _status);
+  Future<Map<String, dynamic>> _load() =>
+      AdminService.instance.bookings(status: _status);
 
   @override
   Widget build(BuildContext context) {
@@ -32,8 +34,12 @@ class _AdminBookingsPageState extends State<AdminBookingsPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Bookings', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
-                  Text('Operational booking activity without customer contact details.', style: TextStyle(color: AdminColors.muted)),
+                  Text('Bookings',
+                      style:
+                          TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
+                  Text(
+                      'Operational booking activity without customer contact details.',
+                      style: TextStyle(color: AdminColors.muted)),
                 ],
               ),
             ),
@@ -67,11 +73,13 @@ class _AdminBookingsPageState extends State<AdminBookingsPage> {
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: DataTable(
-                  headingRowColor: WidgetStateProperty.all(const Color(0xFFFFF2E8)),
+                  headingRowColor:
+                      WidgetStateProperty.all(const Color(0xFFFFF2E8)),
                   columns: const [
                     DataColumn(label: Text('Owner')),
                     DataColumn(label: Text('Provider')),
                     DataColumn(label: Text('Service')),
+                    DataColumn(label: Text('Amount'), numeric: true),
                     DataColumn(label: Text('Date')),
                     DataColumn(label: Text('Status')),
                     DataColumn(label: Text('Reason')),
@@ -79,15 +87,40 @@ class _AdminBookingsPageState extends State<AdminBookingsPage> {
                   rows: rows.map((raw) {
                     final row = raw as Map<String, dynamic>;
                     final owner = row['owner'] as Map<String, dynamic>? ?? {};
-                    final provider = row['provider'] as Map<String, dynamic>? ?? {};
-                    final service = row['service'] as Map<String, dynamic>? ?? {};
+                    final provider =
+                        row['provider'] as Map<String, dynamic>? ?? {};
+                    final service =
+                        row['service'] as Map<String, dynamic>? ?? {};
                     final status = row['status']?.toString() ?? '';
+                    final price =
+                        double.tryParse(service['price']?.toString() ?? '0') ??
+                            0;
+                    final duration = (service['durationMinutes'] as int?) ??
+                        (service['duration_minutes'] as int?) ??
+                        0;
+                    final total = bookingTotalAmount(
+                      price: price,
+                      pricingUnit:
+                          (service['pricingUnit'] ?? service['pricing_unit'])
+                              ?.toString(),
+                      durationMinutes: duration,
+                    );
                     return DataRow(cells: [
-                      DataCell(Text(owner['full_name']?.toString() ?? '')),
-                      DataCell(Text(provider['business_name']?.toString() ?? '')),
-                      DataCell(Text(service['service_name']?.toString() ?? '')),
+                      DataCell(Text((owner['fullName'] ?? owner['full_name'])
+                              ?.toString() ??
+                          '')),
+                      DataCell(Text((provider['businessName'] ??
+                                  provider['business_name'])
+                              ?.toString() ??
+                          '')),
+                      DataCell(Text(
+                          (service['serviceName'] ?? service['service_name'])
+                                  ?.toString() ??
+                              '')),
+                      DataCell(Text(formatKsh(total))),
                       DataCell(Text(_date(row['booking_datetime']))),
-                      DataCell(AdminStatusPill(text: status, color: adminStatusColor(status))),
+                      DataCell(AdminStatusPill(
+                          text: status, color: adminStatusColor(status))),
                       DataCell(Text(row['decline_reason']?.toString() ?? '')),
                     ]);
                   }).toList(),

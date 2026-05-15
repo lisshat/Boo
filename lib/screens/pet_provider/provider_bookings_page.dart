@@ -2,6 +2,7 @@ import 'package:boo/models/provider_models.dart';
 import 'package:boo/screens/pet_provider/provider_chat_page.dart';
 import 'package:boo/services/booking_service.dart';
 import 'package:boo/services/stream_chat_service.dart';
+import 'package:boo/utils/pricing_utils.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
 
@@ -352,7 +353,8 @@ class _BookingCardBase extends StatelessWidget {
               decoration: BoxDecoration(
                 color: const Color(0xFFFFF3CD),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.4)),
+                border: Border.all(
+                    color: const Color(0xFFF59E0B).withValues(alpha: 0.4)),
               ),
               child: const Row(
                 children: [
@@ -410,7 +412,8 @@ class _BookingCardBase extends StatelessWidget {
                     const Icon(Icons.payments_outlined,
                         size: 14, color: Colors.black38),
                     const SizedBox(width: 4),
-                    Text('${booking.priceLabel} ${booking.pricingUnit}',
+                    Text(
+                        '${formatKsh(booking.basePrice)} ${booking.pricingUnit}',
                         style: TextStyle(
                             fontSize: 12, color: Colors.grey.shade500)),
                   ],

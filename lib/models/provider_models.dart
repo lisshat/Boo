@@ -1,3 +1,5 @@
+import 'package:boo/utils/pricing_utils.dart';
+
 enum ProviderType { boarding, sitter, groomer, vet }
 
 class PetSummary {
@@ -117,6 +119,7 @@ class ServiceModel {
   final String priceLabel;
   final double price;
   final int durationMins;
+  final String pricingUnit;
   final bool enabled;
   final String category;
 
@@ -127,14 +130,24 @@ class ServiceModel {
     required this.priceLabel,
     required this.price,
     required this.durationMins,
+    this.pricingUnit = 'per_session',
     this.enabled = true,
     this.category = '',
   });
+
+  double get totalPrice => bookingTotalAmount(
+        price: price,
+        pricingUnit: pricingUnit,
+        durationMinutes: durationMins,
+      );
+
+  String get totalPriceLabel => formatKsh(totalPrice);
 
   factory ServiceModel.fromJson(Map<String, dynamic> json) {
     final price = double.tryParse(json['price']?.toString() ?? '0') ?? 0.0;
     final duration = (json['durationMinutes'] as int?) ?? 60;
     final category = json['category'] as String? ?? '';
+    final pricingUnit = json['pricingUnit'] as String? ?? 'per_session';
     return ServiceModel(
       id: json['serviceId'] as String,
       title: json['serviceName'] as String? ?? 'Service',
@@ -142,6 +155,7 @@ class ServiceModel {
       priceLabel: _fmtPrice(price),
       price: price,
       durationMins: duration,
+      pricingUnit: pricingUnit,
       enabled: json['isActive'] as bool? ?? true,
       category: category,
     );
@@ -256,6 +270,11 @@ class BookingRecord {
   final String providerImageUrl;
   final String serviceName;
   final String priceLabel;
+  final double amount;
+  final double basePrice;
+  final String pricingUnit;
+  final int durationMinutes;
+  final String category;
   final DateTime date;
   final String time;
   final DateTime bookingDatetime;
@@ -269,6 +288,11 @@ class BookingRecord {
     required this.providerImageUrl,
     required this.serviceName,
     required this.priceLabel,
+    required this.amount,
+    required this.basePrice,
+    required this.pricingUnit,
+    required this.durationMinutes,
+    required this.category,
     required this.date,
     required this.time,
     required this.bookingDatetime,
@@ -283,6 +307,16 @@ class BookingRecord {
     final provider = json['provider'] as Map<String, dynamic>? ?? {};
     final service = json['service'] as Map<String, dynamic>? ?? {};
     final price = double.tryParse(service['price']?.toString() ?? '0') ?? 0;
+    final duration = (service['durationMinutes'] as int?) ??
+        (service['duration_minutes'] as int?) ??
+        0;
+    final rawPricingUnit =
+        (service['pricingUnit'] ?? service['pricing_unit'])?.toString();
+    final amount = bookingTotalAmount(
+      price: price,
+      pricingUnit: rawPricingUnit,
+      durationMinutes: duration,
+    );
     return BookingRecord(
       id: (json['bookingId'] ?? json['booking_id'] ?? json['id']).toString(),
       providerName: (provider['businessName'] as String?) ??
@@ -292,7 +326,12 @@ class BookingRecord {
       serviceName: (service['serviceName'] as String?) ??
           (service['service_name'] as String?) ??
           'Service',
-      priceLabel: _formatPrice(price),
+      priceLabel: _formatPrice(amount),
+      amount: amount,
+      basePrice: price,
+      pricingUnit: pricingUnitLabel(rawPricingUnit),
+      durationMinutes: duration,
+      category: service['category']?.toString() ?? '',
       date: DateTime(dt.year, dt.month, dt.day),
       time: _formatTime(dt),
       bookingDatetime: dt,
@@ -345,7 +384,14 @@ class BookingRecord {
   }
 }
 
-enum ProviderBookingStatus { pending, accepted, declined, cancelled, completed, rescheduled }
+enum ProviderBookingStatus {
+  pending,
+  accepted,
+  declined,
+  cancelled,
+  completed,
+  rescheduled
+}
 
 class ProviderBookingRecord {
   final String id;
@@ -353,8 +399,11 @@ class ProviderBookingRecord {
   final String ownerName;
   final String serviceName;
   final String priceLabel;
+  final double amount;
+  final double basePrice;
   final String pricingUnit;
   final int durationMinutes;
+  final String category;
   final DateTime date;
   final String time;
   final DateTime bookingDatetime;
@@ -367,8 +416,11 @@ class ProviderBookingRecord {
     required this.ownerName,
     required this.serviceName,
     required this.priceLabel,
+    required this.amount,
+    required this.basePrice,
     required this.pricingUnit,
     required this.durationMinutes,
+    required this.category,
     required this.date,
     required this.time,
     required this.bookingDatetime,
@@ -383,14 +435,27 @@ class ProviderBookingRecord {
     final service = json['service'] as Map<String, dynamic>? ?? {};
     final owner = json['owner'] as Map<String, dynamic>? ?? {};
     final price = double.tryParse(service['price']?.toString() ?? '0') ?? 0;
+    final duration = (service['durationMinutes'] as int?) ??
+        (service['duration_minutes'] as int?) ??
+        0;
+    final rawPricingUnit =
+        (service['pricingUnit'] ?? service['pricing_unit'])?.toString();
+    final amount = bookingTotalAmount(
+      price: price,
+      pricingUnit: rawPricingUnit,
+      durationMinutes: duration,
+    );
     return ProviderBookingRecord(
       id: json['bookingId'] as String,
       ownerId: json['ownerId'] as String? ?? '',
       ownerName: (owner['fullName'] as String?) ?? 'Pet owner',
       serviceName: (service['serviceName'] as String?) ?? 'Service',
-      priceLabel: _formatPrice(price),
-      pricingUnit: _pricingUnitLabel(service['pricingUnit'] as String?),
-      durationMinutes: (service['durationMinutes'] as int?) ?? 0,
+      priceLabel: _formatPrice(amount),
+      amount: amount,
+      basePrice: price,
+      pricingUnit: pricingUnitLabel(rawPricingUnit),
+      durationMinutes: duration,
+      category: service['category']?.toString() ?? '',
       date: DateTime(dt.year, dt.month, dt.day),
       time: _formatTime(dt),
       bookingDatetime: dt,
@@ -404,25 +469,6 @@ class ProviderBookingRecord {
     if (p >= 1000)
       return 'KSh ${p ~/ 1000},${(p % 1000).toString().padLeft(3, '0')}';
     return 'KSh $p';
-  }
-
-  static String _pricingUnitLabel(String? value) {
-    switch (value) {
-      case 'per_hour':
-      case 'per hour':
-        return 'per hour';
-      case 'per_night':
-      case 'per night':
-        return 'per night';
-      case 'per_day':
-      case 'per day':
-        return 'per day';
-      case 'per_session':
-      case 'per session':
-        return 'per session';
-      default:
-        return 'per session';
-    }
   }
 
   static String _formatTime(DateTime dt) {

@@ -55,7 +55,8 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
   }
 
   Future<void> _loadAvailability() async {
-    final days = await BookingService.instance.getProviderAvailability(widget.provider.id);
+    final days = await BookingService.instance
+        .getProviderAvailability(widget.provider.id);
     if (!mounted) return;
     setState(() {
       _availability = {for (final d in days) d.dayOfWeek: d};
@@ -69,11 +70,20 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
   // Returns null if available, or a reason string if not
   String? _dayUnavailableReason(DateTime dt) {
     if (!_availabilityLoaded) return null;
-    if (_availability.isEmpty) return null; // no schedule set yet — allow booking
+    if (_availability.isEmpty)
+      return null; // no schedule set yet — allow booking
     final dow = _dartWeekdayToOur(dt.weekday);
     final avail = _availability[dow];
     if (avail == null || !avail.isAvailable) {
-      const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const dayNames = [
+        'Sunday',
+        'Monday',
+        'Tuesday',
+        'Wednesday',
+        'Thursday',
+        'Friday',
+        'Saturday'
+      ];
       return 'Provider is not available on ${dayNames[dow]}s';
     }
     return null;
@@ -83,7 +93,15 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
     if (date == null) return [];
     if (!_availabilityLoaded || _availability.isEmpty) {
       // Fallback to default slots if no availability is configured
-      return ['09:00 AM', '09:30 AM', '10:00 AM', '11:00 AM', '01:00 PM', '02:00 PM', '03:00 PM'];
+      return [
+        '09:00 AM',
+        '09:30 AM',
+        '10:00 AM',
+        '11:00 AM',
+        '01:00 PM',
+        '02:00 PM',
+        '03:00 PM'
+      ];
     }
     final dow = _dartWeekdayToOur(date.weekday);
     final avail = _availability[dow];
@@ -105,26 +123,40 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
       final mm = m.toString().padLeft(2, '0');
       slots.add('$displayH:$mm $period');
       m += 30;
-      if (m >= 60) { m -= 60; h++; }
+      if (m >= 60) {
+        m -= 60;
+        h++;
+      }
     }
     return slots;
   }
 
-  void _prevMonth() => setState(
-      () => _focusedMonth = DateTime(_focusedMonth.year, _focusedMonth.month - 1));
+  void _prevMonth() => setState(() =>
+      _focusedMonth = DateTime(_focusedMonth.year, _focusedMonth.month - 1));
 
-  void _nextMonth() => setState(
-      () => _focusedMonth = DateTime(_focusedMonth.year, _focusedMonth.month + 1));
+  void _nextMonth() => setState(() =>
+      _focusedMonth = DateTime(_focusedMonth.year, _focusedMonth.month + 1));
 
   String _monthLabel(DateTime dt) {
     const m = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December'
     ];
     return '${m[dt.month - 1]} ${dt.year}';
   }
 
-  String _shortMonth(DateTime dt) => _monthLabel(dt).split(' ').first.substring(0, 3);
+  String _shortMonth(DateTime dt) =>
+      _monthLabel(dt).split(' ').first.substring(0, 3);
 
   String _dayName(DateTime dt) {
     const d = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -172,13 +204,17 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
   }
 
   String _summaryLine() {
-    if (_selectedDate == null || _selectedTime == null) return 'Select a date & time';
+    if (_selectedDate == null || _selectedTime == null)
+      return 'Select a date & time';
     return '${_dayName(_selectedDate!)}, ${_selectedDate!.day} ${_shortMonth(_selectedDate!)} · $_selectedTime';
   }
 
   Future<void> _confirmBooking() async {
     if (_isSubmitting) return;
-    setState(() { _loading = true; _isSubmitting = true; });
+    setState(() {
+      _loading = true;
+      _isSubmitting = true;
+    });
 
     String? errorMessage;
 
@@ -195,7 +231,10 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
     }
 
     if (!mounted) return;
-    setState(() { _loading = false; _isSubmitting = false; });
+    setState(() {
+      _loading = false;
+      _isSubmitting = false;
+    });
 
     if (errorMessage == null) {
       await BookingConfirmedScreen.show(
@@ -218,7 +257,8 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
   @override
   Widget build(BuildContext context) {
     final days = _daysInMonth(_focusedMonth);
-    final canBook = _selectedPet != null && _selectedDate != null && _selectedTime != null;
+    final canBook =
+        _selectedPet != null && _selectedDate != null && _selectedTime != null;
 
     return Scaffold(
       backgroundColor: bg,
@@ -321,7 +361,12 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                       final selected = _isSelected(dt);
                       final today = _isToday(dt);
                       return GestureDetector(
-                        onTap: past ? null : () => setState(() { _selectedDate = dt; _selectedTime = null; }),
+                        onTap: past
+                            ? null
+                            : () => setState(() {
+                                  _selectedDate = dt;
+                                  _selectedTime = null;
+                                }),
                         child: Container(
                           decoration: BoxDecoration(
                             color: selected
@@ -358,7 +403,8 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
             const Text('Available Time',
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
             const SizedBox(height: 12),
-            if (_selectedDate != null && _dayUnavailableReason(_selectedDate!) != null)
+            if (_selectedDate != null &&
+                _dayUnavailableReason(_selectedDate!) != null)
               Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
@@ -368,12 +414,14 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.event_busy_rounded, color: Color(0xFFB45309), size: 18),
+                    const Icon(Icons.event_busy_rounded,
+                        color: Color(0xFFB45309), size: 18),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
                         _dayUnavailableReason(_selectedDate!)!,
-                        style: const TextStyle(color: Color(0xFF92400E), fontSize: 13),
+                        style: const TextStyle(
+                            color: Color(0xFF92400E), fontSize: 13),
                       ),
                     ),
                   ],
@@ -392,7 +440,8 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                   final sel = _selectedTime == t;
                   final past = _isTimePast(t);
                   return GestureDetector(
-                    onTap: past ? null : () => setState(() => _selectedTime = t),
+                    onTap:
+                        past ? null : () => setState(() => _selectedTime = t),
                     child: Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 18, vertical: 10),
@@ -449,7 +498,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                     ),
                   ),
                   Text(
-                    widget.service.priceLabel,
+                    widget.service.totalPriceLabel,
                     style: const TextStyle(
                         fontWeight: FontWeight.w900,
                         color: orange,
@@ -572,7 +621,8 @@ class _PetSelector extends StatelessWidget {
                     child: pet.photoUrl == null || pet.photoUrl!.isEmpty
                         ? Icon(Icons.pets,
                             size: 22,
-                            color: isSelected ? orange : const Color(0xFF9CA3AF))
+                            color:
+                                isSelected ? orange : const Color(0xFF9CA3AF))
                         : null,
                   ),
                   const SizedBox(height: 6),
@@ -658,8 +708,7 @@ class _ProviderMiniHeader extends StatelessWidget {
           ),
           if (provider.isVerified)
             Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
                 color: orange.withOpacity(0.12),
                 borderRadius: BorderRadius.circular(999),
@@ -722,6 +771,14 @@ class _ServiceSelectedCard extends StatelessWidget {
                       fontWeight: FontWeight.w900,
                       color: orange,
                       fontSize: 16)),
+              if (service.totalPrice != service.price) ...[
+                const SizedBox(height: 2),
+                Text('${service.totalPriceLabel} total',
+                    style: const TextStyle(
+                        color: Color(0xFF6B7280),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 11)),
+              ],
               const SizedBox(height: 4),
               GestureDetector(
                 onTap: () => Navigator.pop(context),
