@@ -6,10 +6,9 @@ import 'package:http/http.dart' as http;
 import 'package:boo/screens/banned_screen.dart';
 import 'package:boo/services/stream_chat_service.dart';
 
-/// Web uses localhost; Android emulator uses 10.0.2.2 to reach host localhost.
-/// Change to your Render URL for production.
+// Production: 'https://boo-backend.onrender.com'
 final String _baseUrl =
-    kIsWeb ? 'https://boo-backend.onrender.com' : 'https://boo-backend.onrender.com';
+    kIsWeb ? 'http://localhost:3000' : 'http://10.0.2.2:3000';
 
 const _storage = FlutterSecureStorage(
   aOptions: AndroidOptions(encryptedSharedPreferences: true),
