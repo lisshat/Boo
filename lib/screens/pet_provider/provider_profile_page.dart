@@ -848,7 +848,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
           const SizedBox(height: 20),
           _Field(label: 'Business Name', controller: _nameCtrl),
           const SizedBox(height: 14),
-          _Field(label: 'Bio', controller: _bioCtrl, maxLines: 3),
+          _BioField(controller: _bioCtrl),
           const SizedBox(height: 14),
           _Field(label: 'Location', controller: _locationCtrl),
           const SizedBox(height: 24),
@@ -882,6 +882,46 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _BioField extends StatelessWidget {
+  final TextEditingController controller;
+  const _BioField({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Bio',
+            style: TextStyle(
+                fontSize: 13, fontWeight: FontWeight.w600, color: Colors.black54)),
+        const SizedBox(height: 6),
+        TextField(
+          controller: controller,
+          maxLines: 3,
+          maxLength: 500,
+          buildCounter: (_, {required currentLength, required isFocused, maxLength}) =>
+              Text(
+            '$currentLength / $maxLength',
+            style: TextStyle(
+              fontSize: 11,
+              color: currentLength > 450 ? const Color(0xFFF68B1F) : Colors.black38,
+            ),
+          ),
+          decoration: InputDecoration(
+            filled: true,
+            fillColor: const Color(0xFFF6F7FB),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

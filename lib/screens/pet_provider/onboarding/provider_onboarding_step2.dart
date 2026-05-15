@@ -108,7 +108,16 @@ class _ProviderOnboardingStep2State extends State<ProviderOnboardingStep2> {
               TextField(
                 controller: _bioCtrl,
                 maxLines: 4,
+                maxLength: 500,
                 textCapitalization: TextCapitalization.sentences,
+                buildCounter: (_, {required currentLength, required isFocused, maxLength}) =>
+                    Text(
+                  '$currentLength / $maxLength',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: currentLength > 450 ? const Color(0xFFF68B1F) : Colors.black38,
+                  ),
+                ),
                 decoration: InputDecoration(
                   hintText: 'Tell owners why they should trust you with their pet...',
                   hintStyle: const TextStyle(color: Colors.black38, fontSize: 13),
