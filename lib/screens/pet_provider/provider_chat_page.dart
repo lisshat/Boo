@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:boo/services/stream_chat_service.dart';
 import 'package:flutter/material.dart';
 import 'package:stream_chat_flutter/stream_chat_flutter.dart';
@@ -13,22 +15,36 @@ class _ProviderChatPageState extends State<ProviderChatPage> {
   static const _orange = Color(0xFFF68B1F);
   static const _bg = Color(0xFFF6F7FB);
 
-  late final Future<Stream<List<Channel>>?> _channelsFuture;
+  Stream<List<Channel>>? _channelStream;
+  bool _loading = true;
+  bool _unavailable = false;
   final Set<String> _hiddenChannelKeys = {};
+  StreamSubscription<Event>? _notifSub;
 
   @override
   void initState() {
     super.initState();
-    _channelsFuture = _loadChannels();
+    _init();
   }
 
-  Future<Stream<List<Channel>>?> _loadChannels() async {
+  Future<void> _init() async {
     final streamService = BooStreamChatService.instance;
     final connected = await streamService.connectFromStoredSession();
     final userId = streamService.currentUserId;
-    if (!connected || userId == null) return null;
+    if (!connected || userId == null) {
+      if (mounted) setState(() { _loading = false; _unavailable = true; });
+      return;
+    }
+    _notifSub = streamService.client
+        .on(EventType.notificationMessageNew)
+        .listen((_) => _reload());
+    _reload();
+  }
 
-    return streamService.client.queryChannels(
+  void _reload() {
+    final userId = BooStreamChatService.instance.currentUserId;
+    if (userId == null) return;
+    final stream = BooStreamChatService.instance.client.queryChannels(
       filter: Filter.in_('members', [userId]),
       channelStateSort: const [
         SortOption<ChannelState>.desc('last_message_at'),
@@ -38,6 +54,13 @@ class _ProviderChatPageState extends State<ProviderChatPage> {
       watch: true,
       state: true,
     );
+    if (mounted) setState(() { _channelStream = stream; _loading = false; _unavailable = false; });
+  }
+
+  @override
+  void dispose() {
+    _notifSub?.cancel();
+    super.dispose();
   }
 
   Future<bool> _hideChannel(Channel channel) async {
@@ -68,107 +91,99 @@ class _ProviderChatPageState extends State<ProviderChatPage> {
     return Scaffold(
       backgroundColor: _bg,
       body: SafeArea(
-        child: FutureBuilder<Stream<List<Channel>>?>(
-          future: _channelsFuture,
-          builder: (context, snapshot) {
-            final loading = snapshot.connectionState != ConnectionState.done;
-            final channelStream = snapshot.data;
+        child: StreamBuilder<List<Channel>>(
+          stream: _channelStream,
+          builder: (context, channelSnapshot) {
+            final channels = channelSnapshot.data ?? const <Channel>[];
+            final unreadCount = channels.fold<int>(
+              0,
+              (sum, channel) => sum + (channel.state?.unreadCount ?? 0),
+            );
 
-            return StreamBuilder<List<Channel>>(
-              stream: channelStream,
-              builder: (context, channelSnapshot) {
-                final channels = channelSnapshot.data ?? const <Channel>[];
-                final unreadCount = channels.fold<int>(
-                  0,
-                  (sum, channel) => sum + (channel.state?.unreadCount ?? 0),
-                );
-
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 16, 16, 0),
-                      child: Row(
-                        children: [
-                          const Expanded(
-                            child: Text(
-                              'Messages',
-                              style: TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
-                              ),
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 16, 0),
+                  child: Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          'Messages',
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      if (unreadCount > 0)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: _orange.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            '$unreadCount unread',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: _orange,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
-                          if (unreadCount > 0)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: _orange.withOpacity(0.12),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                '$unreadCount unread',
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: _orange,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 10,
                         ),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: const Color(0xFFEAECEF)),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(
-                              Icons.search,
-                              color: Color(0xFF9CA3AF),
-                              size: 18,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Search conversations',
-                              style: TextStyle(
-                                color: Colors.grey.shade400,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
                     ),
-                    const SizedBox(height: 12),
-                    Expanded(
-                      child: _buildListBody(
-                        loading: loading ||
-                            channelSnapshot.connectionState ==
-                                ConnectionState.waiting,
-                        unavailable: !loading && channelStream == null,
-                        channels: channels
-                            .where((c) =>
-                                !_hiddenChannelKeys.contains(_channelKey(c)))
-                            .toList(),
-                      ),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: const Color(0xFFEAECEF)),
                     ),
-                  ],
-                );
-              },
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.search,
+                          color: Color(0xFF9CA3AF),
+                          size: 18,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Search conversations',
+                          style: TextStyle(
+                            color: Colors.grey.shade400,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: _buildListBody(
+                    loading: _loading ||
+                        channelSnapshot.connectionState ==
+                            ConnectionState.waiting,
+                    unavailable: _unavailable,
+                    channels: channels
+                        .where((c) =>
+                            !_hiddenChannelKeys.contains(_channelKey(c)))
+                        .toList(),
+                  ),
+                ),
+              ],
             );
           },
         ),
@@ -196,28 +211,32 @@ class _ProviderChatPageState extends State<ProviderChatPage> {
         message: 'Conversations with pet owners will appear here.',
       );
     }
-    return ListView.separated(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      itemCount: channels.length,
-      separatorBuilder: (_, __) =>
-          const Divider(height: 1, color: Color(0xFFEAECEF)),
-      itemBuilder: (context, i) {
-        final channel = channels[i];
-        return _DismissibleThread(
-          channel: channel,
-          onDelete: () => _hideChannel(channel),
-          child: _ThreadTile(
+    return RefreshIndicator(
+      color: _orange,
+      onRefresh: () async => _reload(),
+      child: ListView.separated(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        itemCount: channels.length,
+        separatorBuilder: (_, __) =>
+            const Divider(height: 1, color: Color(0xFFEAECEF)),
+        itemBuilder: (context, i) {
+          final channel = channels[i];
+          return _DismissibleThread(
             channel: channel,
-            onReadChanged: () => setState(() {}),
-            onSelfChannel: () {
-              setState(
-                () => _hiddenChannelKeys.add(_channelKey(channel)),
-              );
-              channel.hide().catchError((_) {});
-            },
-          ),
-        );
-      },
+            onDelete: () => _hideChannel(channel),
+            child: _ThreadTile(
+              channel: channel,
+              onReadChanged: () => setState(() {}),
+              onSelfChannel: () {
+                setState(
+                  () => _hiddenChannelKeys.add(_channelKey(channel)),
+                );
+                channel.hide().catchError((_) {});
+              },
+            ),
+          );
+        },
+      ),
     );
   }
 }
