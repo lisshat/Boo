@@ -91,7 +91,7 @@ class _ProviderDashboardPageState extends State<ProviderDashboardPage> {
                       }
                       final status =
                           providerSnap.data?['verificationStatus'] as String?;
-                      if (status == 'approved') return const SizedBox.shrink();
+                      if (status == 'approved' || status == 'pending') return const SizedBox.shrink();
                       return Padding(
                         padding: const EdgeInsets.only(top: 14),
                         child: _VerificationNudge(

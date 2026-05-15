@@ -193,19 +193,6 @@ class _VerificationUploadScreenState extends State<VerificationUploadScreen> {
                         ),
                 ),
               ),
-              const SizedBox(height: 8),
-              Center(
-                child: TextButton(
-                  onPressed: busy ? null : () => Navigator.pop(context),
-                  child: Text(
-                    "I'll do this later →",
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: busy ? Colors.grey.shade300 : Colors.grey.shade500,
-                    ),
-                  ),
-                ),
-              ),
               if (snapshot.connectionState == ConnectionState.waiting)
                 const Padding(
                   padding: EdgeInsets.only(top: 16),
