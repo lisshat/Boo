@@ -3,10 +3,10 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
+import 'package:boo/screens/banned_screen.dart';
 import 'package:boo/services/stream_chat_service.dart';
 
-/// Web uses localhost; Android emulator uses 10.0.2.2 to reach host localhost.
-/// Change to your Render URL for production.
+// Production: 'https://boo-backend.onrender.com'
 final String _baseUrl =
     kIsWeb ? 'http://localhost:3000' : 'http://10.0.2.2:3000';
 
@@ -25,10 +25,12 @@ class AuthService {
     required String accessToken,
     required String refreshToken,
     required String role,
+    String? email,
   }) async {
     await _storage.write(key: 'access_token', value: accessToken);
     await _storage.write(key: 'refresh_token', value: refreshToken);
     await _storage.write(key: 'user_role', value: role);
+    if (email != null) await _storage.write(key: 'user_email', value: email);
   }
 
   String? _readString(
@@ -48,6 +50,8 @@ class AuthService {
   Future<String?> getAccessToken() => _storage.read(key: 'access_token');
   Future<String?> getUserRole() => _storage.read(key: 'user_role');
 
+  Future<String?> getUserEmail() => _storage.read(key: 'user_email');
+
   Future<bool> hasValidToken() async {
     final token = await getAccessToken();
     return token != null;
@@ -63,6 +67,16 @@ class AuthService {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'email': email, 'password': password}),
       );
+      if (res.statusCode == 403) {
+        await logout();
+        navigatorKey.currentState?.pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (_) => BannedScreen(email: email),
+          ),
+          (route) => false,
+        );
+        return '__ACCOUNT_SUSPENDED__';
+      }
       final body = jsonDecode(res.body) as Map<String, dynamic>;
       if (res.statusCode == 200 || res.statusCode == 201) {
         final accessToken = _readString(body, 'access_token', 'accessToken');
@@ -74,6 +88,7 @@ class AuthService {
           accessToken: accessToken,
           refreshToken: refreshToken,
           role: _readRole(body),
+          email: email,
         );
         await BooStreamChatService.instance.saveSessionFromAuthPayload(body);
         await BooStreamChatService.instance.connectFromStoredSession();
@@ -114,6 +129,7 @@ class AuthService {
           accessToken: accessToken,
           refreshToken: refreshToken,
           role: _readRole(body),
+          email: email,
         );
         await BooStreamChatService.instance.saveSessionFromAuthPayload(body);
         await BooStreamChatService.instance.connectFromStoredSession();
@@ -260,6 +276,20 @@ class ApiService {
   Future<http.Response> _withRefresh(
       Future<http.Response> Function() call) async {
     final res = await call();
+    if (res.statusCode == 403) {
+      Map<String, dynamic>? body;
+      try { body = jsonDecode(res.body) as Map<String, dynamic>; } catch (_) {}
+      if (body?['code'] == 'ACCOUNT_SUSPENDED') {
+        await AuthService.instance.logout();
+        final email = await AuthService.instance.getUserEmail();
+        navigatorKey.currentState?.pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => BannedScreen(email: email ?? '')),
+          (route) => false,
+        );
+        throw Exception('Account suspended');
+      }
+      return res;
+    }
     if (res.statusCode != 401) return res;
 
     final refreshError = await AuthService.instance.refreshToken();
