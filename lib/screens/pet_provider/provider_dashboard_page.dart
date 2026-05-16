@@ -424,7 +424,7 @@ class _UpcomingSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          "Today's schedule",
+          'Requests & Schedule',
           style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 12),
@@ -536,13 +536,13 @@ class _EmptySchedule extends StatelessWidget {
               size: 40, color: Colors.grey.shade300),
           const SizedBox(height: 12),
           Text(
-            'No bookings today',
+            'No pending requests',
             style: TextStyle(
                 color: Colors.grey.shade400, fontWeight: FontWeight.w500),
           ),
           const SizedBox(height: 4),
           Text(
-            'New requests will appear here',
+            'New booking requests will appear here',
             style: TextStyle(fontSize: 12, color: Colors.grey.shade400),
           ),
         ],
