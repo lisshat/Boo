@@ -628,6 +628,21 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
   }
 
   Future<bool> _loadProviderVerification() async {
+    // Always prefer the live API when provider_id is available — channel
+    // extraData can be stale (set when the chat was first opened, before
+    // the provider was verified).
+    final providerId = widget.channel.extraData['provider_id']?.toString();
+    if (providerId != null && providerId.isNotEmpty) {
+      try {
+        final res = await ApiService.instance.get('/providers/$providerId');
+        if (res.statusCode == 200) {
+          final body = jsonDecode(res.body) as Map<String, dynamic>;
+          return body['isVerified'] as bool? ?? false;
+        }
+      } catch (_) {}
+    }
+
+    // Fallback: stale channel extra data or Stream user metadata.
     final channelExtra = widget.channel.extraData;
     final directVerification = channelExtra['provider_is_verified'];
     if (directVerification is bool) return directVerification;
@@ -640,20 +655,6 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
       if (normalized == 'unverified' || normalized == 'pending') return false;
     }
 
-    final providerId = widget.channel.extraData['provider_id']?.toString();
-    if (providerId == null || providerId.isEmpty) {
-      return _isVerifiedProvider(widget.channel, _otherUser(widget.channel));
-    }
-
-    try {
-      final res = await ApiService.instance.get('/providers/$providerId');
-      if (res.statusCode == 200) {
-        final body = jsonDecode(res.body) as Map<String, dynamic>;
-        return body['isVerified'] as bool? ?? false;
-      }
-    } catch (_) {
-      // Fall back to any Stream metadata if the provider lookup fails.
-    }
     return _isVerifiedProvider(widget.channel, _otherUser(widget.channel));
   }
 }

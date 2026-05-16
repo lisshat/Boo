@@ -15,7 +15,6 @@ const _storage = FlutterSecureStorage(
   aOptions: AndroidOptions(encryptedSharedPreferences: true),
 );
 final navigatorKey = GlobalKey<NavigatorState>();
-
 class AuthService {
   AuthService._();
   static final AuthService instance = AuthService._();

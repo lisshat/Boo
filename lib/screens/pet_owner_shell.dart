@@ -17,6 +17,7 @@ class PetOwnerShell extends StatefulWidget {
 class _PetOwnerShellState extends State<PetOwnerShell> {
   late int _index;
   int _bookingsGeneration = 0;
+  int _chatGeneration = 0;
 
   @override
   void initState() {
@@ -29,7 +30,7 @@ class _PetOwnerShellState extends State<PetOwnerShell> {
     final pages = [
       const HomeDashboardPage(),
       BookingsPage(key: ValueKey(_bookingsGeneration)),
-      const ChatPage(),
+      ChatPage(key: ValueKey(_chatGeneration)),
       const ProfilePage(),
     ];
 
@@ -40,6 +41,7 @@ class _PetOwnerShellState extends State<PetOwnerShell> {
         onDestinationSelected: (i) {
           setState(() {
             if (i == 1 && _index != 1) _bookingsGeneration++;
+            if (i == 2 && _index != 2) _chatGeneration++;
             _index = i;
           });
         },
