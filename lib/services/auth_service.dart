@@ -9,7 +9,7 @@ import 'package:boo/services/stream_chat_service.dart';
 /// Web uses localhost; Android emulator uses 10.0.2.2 to reach host localhost.
 /// Change to your Render URL for production.
 final String _baseUrl =
-    kIsWeb ? 'https://boo-backend.onrender.com' : 'https://boo-backend.onrender.com';
+    kIsWeb ? 'https://boo-backend.onrender.com' : 'http://10.0.2.2:3000';
 
 const _storage = FlutterSecureStorage(
   aOptions: AndroidOptions(encryptedSharedPreferences: true),
@@ -179,24 +179,14 @@ class AuthService {
     }
   }
 
-  Future<String?>? _refreshFuture;
-
-  // Deduplicates concurrent refresh calls — only one HTTP request goes out
-  // even if multiple 401 responses fire simultaneously on startup.
-  Future<String?> refreshToken() {
-    _refreshFuture ??=
-        _doRefreshToken().whenComplete(() => _refreshFuture = null);
-    return _refreshFuture!;
-  }
-
-  Future<String?> _doRefreshToken() async {
+  Future<String?> refreshToken() async {
     try {
-      final storedRefresh = await _storage.read(key: 'refresh_token');
-      if (storedRefresh == null) return 'No refresh token available';
+      final refreshToken = await _storage.read(key: 'refresh_token');
+      if (refreshToken == null) return 'No refresh token available';
       final res = await http.post(
         Uri.parse('$_baseUrl/auth/refresh'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'refreshToken': storedRefresh}),
+        body: jsonEncode({'refreshToken': refreshToken}),
       );
       final body = jsonDecode(res.body) as Map<String, dynamic>;
       if (res.statusCode == 200) {
