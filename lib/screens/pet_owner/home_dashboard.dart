@@ -95,9 +95,8 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
     });
 
     String path = '/providers';
-    if (_position != null) {
-      path += '?lat=${_position!.latitude}&lng=${_position!.longitude}';
-      if (_radius != null) path += '&radius=$_radius';
+    if (_position != null && _radius != null) {
+      path += '?lat=${_position!.latitude}&lng=${_position!.longitude}&radius=$_radius';
     }
 
     try {
