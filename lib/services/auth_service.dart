@@ -179,14 +179,24 @@ class AuthService {
     }
   }
 
-  Future<String?> refreshToken() async {
+  Future<String?>? _refreshFuture;
+
+  // Deduplicates concurrent refresh calls — only one HTTP request goes out
+  // even if multiple 401 responses fire simultaneously on startup.
+  Future<String?> refreshToken() {
+    _refreshFuture ??=
+        _doRefreshToken().whenComplete(() => _refreshFuture = null);
+    return _refreshFuture!;
+  }
+
+  Future<String?> _doRefreshToken() async {
     try {
-      final refreshToken = await _storage.read(key: 'refresh_token');
-      if (refreshToken == null) return 'No refresh token available';
+      final storedRefresh = await _storage.read(key: 'refresh_token');
+      if (storedRefresh == null) return 'No refresh token available';
       final res = await http.post(
         Uri.parse('$_baseUrl/auth/refresh'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'refreshToken': refreshToken}),
+        body: jsonEncode({'refreshToken': storedRefresh}),
       );
       final body = jsonDecode(res.body) as Map<String, dynamic>;
       if (res.statusCode == 200) {

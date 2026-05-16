@@ -15,11 +15,19 @@ class ChatPage extends StatefulWidget {
 class _ChatPageState extends State<ChatPage> {
   late final Future<Stream<List<Channel>>?> _channelsFuture;
   final Set<String> _hiddenChannelKeys = {};
+  final TextEditingController _searchCtrl = TextEditingController();
+  String _searchQuery = '';
 
   @override
   void initState() {
     super.initState();
     _channelsFuture = _loadChannels();
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
   }
 
   Future<Stream<List<Channel>>?> _loadChannels() async {
@@ -89,22 +97,43 @@ class _ChatPageState extends State<ChatPage> {
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFFEAECEF)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.search, color: Color(0xFF9CA3AF), size: 18),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Search conversations',
-                    style: TextStyle(color: Colors.grey.shade400, fontSize: 14),
-                  ),
-                ],
+            child: TextField(
+              controller: _searchCtrl,
+              onChanged: (v) =>
+                  setState(() => _searchQuery = v.toLowerCase().trim()),
+              style: const TextStyle(fontSize: 14),
+              decoration: InputDecoration(
+                hintText: 'Search conversations',
+                hintStyle:
+                    TextStyle(color: Colors.grey.shade400, fontSize: 14),
+                prefixIcon: const Icon(Icons.search,
+                    color: Color(0xFF9CA3AF), size: 18),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear,
+                            size: 16, color: Color(0xFF9CA3AF)),
+                        onPressed: () {
+                          _searchCtrl.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                      )
+                    : null,
+                filled: true,
+                fillColor: Colors.white,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: const BorderSide(color: Color(0xFFEAECEF)),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: const BorderSide(color: Color(0xFFEAECEF)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: const BorderSide(color: Color(0xFFF68B1F)),
+                ),
               ),
             ),
           ),
@@ -132,11 +161,23 @@ class _ChatPageState extends State<ChatPage> {
                         channels.isEmpty) {
                       return const Center(child: CircularProgressIndicator());
                     }
-                    final visibleChannels = channels
-                        .where((c) =>
-                            !_isSelfChannel(c) &&
-                            !_hiddenChannelKeys.contains(_channelKey(c)))
-                        .toList();
+                    final visibleChannels = channels.where((c) {
+                      if (_isSelfChannel(c)) return false;
+                      if (_hiddenChannelKeys.contains(_channelKey(c))) {
+                        return false;
+                      }
+                      if (_searchQuery.isEmpty) return true;
+                      final other = _otherUser(c);
+                      final nameMatch = other?.name
+                              ?.toLowerCase()
+                              .contains(_searchQuery) ??
+                          false;
+                      final channelMatch = c.name
+                              ?.toLowerCase()
+                              .contains(_searchQuery) ??
+                          false;
+                      return nameMatch || channelMatch;
+                    }).toList();
                     if (visibleChannels.isEmpty) {
                       return const _EmptyState(
                         title: 'No messages yet',
