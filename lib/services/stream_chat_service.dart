@@ -96,6 +96,7 @@ class BooStreamChatService {
     try {
       return await _connectFuture!;
     } catch (_) {
+      _client = null;
       return false;
     } finally {
       _connectFuture = null;

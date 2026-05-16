@@ -128,6 +128,20 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
 
   List<ProviderModel> get _filteredProviders {
     var list = _allProviders;
+
+    // Client-side radius guard: backend skips providers with null coords,
+    // so enforce the radius here for any that slipped through.
+    if (_position != null && _radius != null) {
+      list = list.where((p) {
+        final lat = p.latitude;
+        final lng = p.longitude;
+        if (lat == null || lng == null) return false;
+        final distM = Geolocator.distanceBetween(
+          _position!.latitude, _position!.longitude, lat, lng);
+        return distM <= _radius! * 1000;
+      }).toList();
+    }
+
     if (_selectedCategory != null) {
       list = list.where((p) => p.type == _selectedCategory).toList();
     }

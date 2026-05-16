@@ -1,3 +1,4 @@
+import 'package:boo/services/cloudinary_upload_service.dart';
 import 'package:flutter/material.dart';
 import 'owner_onboarding_step1.dart';
 import 'owner_onboarding_step3.dart';
@@ -17,6 +18,8 @@ class _OwnerOnboardingStep2State extends State<OwnerOnboardingStep2> {
 
   late final TextEditingController _nameController;
   String _selectedType = 'Dog';
+  String? _petPhotoUrl;
+  bool _uploadingPhoto = false;
 
   @override
   void initState() {
@@ -31,6 +34,36 @@ class _OwnerOnboardingStep2State extends State<OwnerOnboardingStep2> {
     super.dispose();
   }
 
+  Future<void> _pickAndUploadPhoto() async {
+    if (_uploadingPhoto) return;
+    setState(() => _uploadingPhoto = true);
+    try {
+      final url = await CloudinaryUploadService.instance.pickAndUploadImage(
+        folder: 'boo/pets',
+      );
+      if (url != null && mounted) {
+        setState(() => _petPhotoUrl = url);
+      }
+    } on ImageUploadValidationException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message), backgroundColor: Colors.red),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not upload photo. Try again.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _uploadingPhoto = false);
+    }
+  }
+
   void _goToStep3() {
     Navigator.push(
       context,
@@ -38,6 +71,7 @@ class _OwnerOnboardingStep2State extends State<OwnerOnboardingStep2> {
         builder: (_) => OwnerOnboardingStep3(
           petName: _nameController.text.trim(),
           petType: _selectedType,
+          petPhotoUrl: _petPhotoUrl,
         ),
       ),
     );
@@ -70,7 +104,11 @@ class _OwnerOnboardingStep2State extends State<OwnerOnboardingStep2> {
                 style: const TextStyle(fontSize: 14, color: Colors.black54, height: 1.5),
               ),
               const SizedBox(height: 28),
-              _PhotoStub(),
+              _PhotoPicker(
+                photoUrl: _petPhotoUrl,
+                uploading: _uploadingPhoto,
+                onTap: _pickAndUploadPhoto,
+              ),
               const SizedBox(height: 28),
               const Text('Type', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
               const SizedBox(height: 10),
@@ -152,63 +190,75 @@ class _OnboardingTopBar extends StatelessWidget {
   }
 }
 
-class _PhotoStub extends StatelessWidget {
+class _PhotoPicker extends StatelessWidget {
+  final String? photoUrl;
+  final bool uploading;
+  final VoidCallback onTap;
+
+  const _PhotoPicker({
+    required this.photoUrl,
+    required this.uploading,
+    required this.onTap,
+  });
+
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
         Center(
-          child: Stack(
-            children: [
-              Container(
-                width: 96,
-                height: 96,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.grey.shade200, width: 2),
-                ),
-                child: const Icon(Icons.pets, size: 40, color: Colors.black26),
-              ),
-              Positioned(
-                bottom: 0,
-                right: 0,
-                child: Container(
-                  width: 28,
-                  height: 28,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFF68B1F),
+          child: GestureDetector(
+            onTap: uploading ? null : onTap,
+            child: Stack(
+              children: [
+                Container(
+                  width: 96,
+                  height: 96,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
                     shape: BoxShape.circle,
+                    border: Border.all(color: Colors.grey.shade200, width: 2),
                   ),
-                  child: const Icon(Icons.camera_alt, size: 15, color: Colors.white),
+                  clipBehavior: Clip.antiAlias,
+                  child: uploading
+                      ? const Center(
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Color(0xFFF68B1F),
+                          ),
+                        )
+                      : photoUrl != null
+                          ? Image.network(
+                              photoUrl!,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) =>
+                                  const Icon(Icons.pets, size: 40, color: Colors.black26),
+                            )
+                          : const Icon(Icons.pets, size: 40, color: Colors.black26),
                 ),
-              ),
-            ],
+                Positioned(
+                  bottom: 0,
+                  right: 0,
+                  child: Container(
+                    width: 28,
+                    height: 28,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFF68B1F),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.camera_alt, size: 15, color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
         const SizedBox(height: 8),
-        const Text(
-          "Add a photo so providers know who they're meeting",
+        Text(
+          photoUrl != null
+              ? 'Tap to change photo'
+              : "Add a photo so providers know who they're meeting",
           textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 12, color: Colors.black45),
-        ),
-        const SizedBox(height: 6),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          decoration: BoxDecoration(
-            color: Colors.orange.shade50,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.orange.shade200),
-          ),
-          child: const Text(
-            'COMING SOON',
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFFF68B1F),
-              letterSpacing: 0.5,
-            ),
-          ),
+          style: const TextStyle(fontSize: 12, color: Colors.black45),
         ),
       ],
     );
@@ -223,30 +273,29 @@ class _PetTypeChips extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: ['Dog', 'Cat', 'Other'].map((type) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: ['Dog', 'Cat', 'Bird', 'Rabbit', 'Other'].map((type) {
         final isSelected = selected == type;
-        return Padding(
-          padding: const EdgeInsets.only(right: 8),
-          child: GestureDetector(
-            onTap: () => onSelect(type),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 150),
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-              decoration: BoxDecoration(
-                color: isSelected ? const Color(0xFFF68B1F) : Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: isSelected ? const Color(0xFFF68B1F) : Colors.grey.shade300,
-                ),
+        return GestureDetector(
+          onTap: () => onSelect(type),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+            decoration: BoxDecoration(
+              color: isSelected ? const Color(0xFFF68B1F) : Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: isSelected ? const Color(0xFFF68B1F) : Colors.grey.shade300,
               ),
-              child: Text(
-                type,
-                style: TextStyle(
-                  color: isSelected ? Colors.white : Colors.black87,
-                  fontWeight: FontWeight.w500,
-                  fontSize: 14,
-                ),
+            ),
+            child: Text(
+              type,
+              style: TextStyle(
+                color: isSelected ? Colors.white : Colors.black87,
+                fontWeight: FontWeight.w500,
+                fontSize: 14,
               ),
             ),
           ),

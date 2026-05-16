@@ -7,11 +7,13 @@ import 'owner_onboarding_step1.dart';
 class OwnerOnboardingStep3 extends StatefulWidget {
   final String petName;
   final String petType;
+  final String? petPhotoUrl;
 
   const OwnerOnboardingStep3({
     super.key,
     required this.petName,
     required this.petType,
+    this.petPhotoUrl,
   });
 
   @override
@@ -30,6 +32,7 @@ class _OwnerOnboardingStep3State extends State<OwnerOnboardingStep3> {
       final res = await ApiService.instance.post('/pets', {
         'name': widget.petName,
         'species': widget.petType.toLowerCase(),
+        if (widget.petPhotoUrl != null) 'photoUrl': widget.petPhotoUrl!,
       });
       if (!mounted) return;
       if (res.statusCode == 201) {
