@@ -292,6 +292,8 @@ class BookingRecord {
   final BookingStatus status;
   final String? declineReason;
   final String? rescheduledFrom;
+  final bool hasReview;
+  final int? reviewRating;
 
   const BookingRecord({
     required this.id,
@@ -310,6 +312,8 @@ class BookingRecord {
     required this.status,
     this.declineReason,
     this.rescheduledFrom,
+    this.hasReview = false,
+    this.reviewRating,
   });
 
   factory BookingRecord.fromJson(Map<String, dynamic> json) {
@@ -351,6 +355,8 @@ class BookingRecord {
           (json['declineReason'] ?? json['decline_reason']) as String?,
       rescheduledFrom:
           (json['rescheduledFrom'] ?? json['rescheduled_from']) as String?,
+      hasReview: json['hasReview'] as bool? ?? false,
+      reviewRating: json['reviewRating'] as int?,
     );
   }
 

@@ -1,6 +1,5 @@
 import 'package:boo/models/provider_models.dart';
 import 'package:boo/services/booking_service.dart';
-import 'package:boo/services/reviews_service.dart';
 import 'package:boo/screens/pet_owner/leave_review_screen.dart';
 import 'package:flutter/material.dart';
 
@@ -15,7 +14,6 @@ class _BookingsPageState extends State<BookingsPage>
     with SingleTickerProviderStateMixin {
   late TabController _tab;
   List<BookingRecord> _bookings = [];
-  Set<String> _reviewedBookingIds = {};
   bool _isLoading = true;
   String? _error;
 
@@ -29,14 +27,10 @@ class _BookingsPageState extends State<BookingsPage>
   Future<void> _loadBookings() async {
     setState(() { _isLoading = true; _error = null; });
     try {
-      final results = await Future.wait([
-        BookingService.instance.getBookings(),
-        ReviewsService.instance.getMyReviewedBookingIds(),
-      ]);
+      final bookings = await BookingService.instance.getBookings();
       if (mounted) {
         setState(() {
-          _bookings = results[0] as List<BookingRecord>;
-          _reviewedBookingIds = results[1] as Set<String>;
+          _bookings = bookings;
           _isLoading = false;
         });
       }
@@ -124,7 +118,6 @@ class _BookingsPageState extends State<BookingsPage>
                             emptyLabel: 'No upcoming bookings',
                             onCancel: _cancelBooking,
                             onRefresh: _loadBookings,
-                            reviewedIds: _reviewedBookingIds,
                             onReviewSubmitted: _loadBookings,
                           ),
                           _BookingList(
@@ -132,7 +125,6 @@ class _BookingsPageState extends State<BookingsPage>
                             emptyLabel: 'No past bookings',
                             onCancel: _cancelBooking,
                             onRefresh: _loadBookings,
-                            reviewedIds: _reviewedBookingIds,
                             onReviewSubmitted: _loadBookings,
                           ),
                         ],
@@ -174,7 +166,6 @@ class _BookingList extends StatelessWidget {
   final String emptyLabel;
   final Future<void> Function(String bookingId) onCancel;
   final VoidCallback onRefresh;
-  final Set<String> reviewedIds;
   final VoidCallback onReviewSubmitted;
 
   const _BookingList({
@@ -182,7 +173,6 @@ class _BookingList extends StatelessWidget {
     required this.emptyLabel,
     required this.onCancel,
     required this.onRefresh,
-    required this.reviewedIds,
     required this.onReviewSubmitted,
   });
 
@@ -202,7 +192,6 @@ class _BookingList extends StatelessWidget {
         booking: bookings[i],
         onCancel: onCancel,
         onRefresh: onRefresh,
-        alreadyReviewed: reviewedIds.contains(bookings[i].id),
         onReviewSubmitted: onReviewSubmitted,
       ),
     );
@@ -213,14 +202,12 @@ class _BookingCard extends StatefulWidget {
   final BookingRecord booking;
   final Future<void> Function(String bookingId) onCancel;
   final VoidCallback onRefresh;
-  final bool alreadyReviewed;
   final VoidCallback onReviewSubmitted;
 
   const _BookingCard({
     required this.booking,
     required this.onCancel,
     required this.onRefresh,
-    required this.alreadyReviewed,
     required this.onReviewSubmitted,
   });
 
@@ -631,7 +618,7 @@ class _BookingCardState extends State<_BookingCard> {
               ),
             )
           else if (booking.status == BookingStatus.completed &&
-              !widget.alreadyReviewed)
+              !booking.hasReview)
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
@@ -659,6 +646,39 @@ class _BookingCardState extends State<_BookingCard> {
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10)),
                 ),
+              ),
+            )
+          else if (booking.status == BookingStatus.completed && booking.hasReview)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF6F7FB),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFE5E7EB)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  ...List.generate(5, (i) => Icon(
+                    i < (booking.reviewRating ?? 0)
+                        ? Icons.star_rounded
+                        : Icons.star_outline_rounded,
+                    size: 16,
+                    color: i < (booking.reviewRating ?? 0)
+                        ? const Color(0xFFF59E0B)
+                        : const Color(0xFF9CA3AF),
+                  )),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Review submitted',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF6B7280),
+                    ),
+                  ),
+                ],
               ),
             )
           else
