@@ -21,7 +21,7 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
   final _searchCtrl = TextEditingController();
 
   ProviderType? _selectedCategory;
-  String _sortBy = 'rating';
+  String _sortBy = 'recommended';
   int? _radius = 25; // null = any distance
 
   Position? _position;
@@ -158,15 +158,40 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
         return haystack.contains(query);
       }).toList();
     }
-    if (_sortBy == 'reviews') {
+    if (_sortBy == 'recommended') {
+      list = List.from(list)
+        ..sort((a, b) {
+          final scoreDiff =
+              b.recommendedScore.compareTo(a.recommendedScore);
+          if (scoreDiff != 0) return scoreDiff;
+          final ratingDiff = b.rating.compareTo(a.rating);
+          if (ratingDiff != 0) return ratingDiff;
+          if (_position != null) {
+            final dA = _distKm(a);
+            final dB = _distKm(b);
+            if (dA != null && dB != null) return dA.compareTo(dB);
+          }
+          return 0;
+        });
+    } else if (_sortBy == 'reviews') {
       list = List.from(list)
         ..sort((a, b) => b.reviewCount.compareTo(a.reviewCount));
     }
     return list;
   }
 
+  double? _distKm(ProviderModel p) {
+    if (_position == null || p.latitude == null || p.longitude == null) {
+      return null;
+    }
+    return Geolocator.distanceBetween(
+          _position!.latitude, _position!.longitude,
+          p.latitude!, p.longitude!) /
+        1000;
+  }
+
   bool get _filtersActive =>
-      _sortBy != 'rating' ||
+      _sortBy != 'recommended' ||
       (_radius != 25 && _position != null) ||
       _searchCtrl.text.trim().isNotEmpty;
 
@@ -524,11 +549,11 @@ class _FilterSheet extends StatelessWidget {
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),
           _SortOption(
-            label: 'Top Rated',
-            value: 'rating',
+            label: 'Recommended',
+            value: 'recommended',
             groupValue: sortBy,
             onTap: () {
-              onSortChanged('rating');
+              onSortChanged('recommended');
               Navigator.pop(context);
             },
           ),

@@ -36,6 +36,7 @@ class ProviderModel {
   final String locationName;
   final String addressLine;
   final bool isVerified;
+  final String verificationStatus;
   final double? latitude;
   final double? longitude;
   final List<ServiceModel> services;
@@ -54,11 +55,20 @@ class ProviderModel {
     required this.locationName,
     required this.addressLine,
     required this.isVerified,
+    required this.verificationStatus,
     required this.services,
     required this.reviews,
     this.latitude,
     this.longitude,
   });
+
+  double _getBoost(String status) {
+    if (isVerified || status == 'approved') return 1.0;
+    if (status == 'pending') return 0.3;
+    return 0.0;
+  }
+
+  double get recommendedScore => rating + _getBoost(verificationStatus);
 
   factory ProviderModel.fromJson(Map<String, dynamic> json) {
     final services = (json['services'] as List<dynamic>? ?? [])
@@ -89,6 +99,7 @@ class ProviderModel {
       locationName: json['location'] as String? ?? 'Nairobi',
       addressLine: '',
       isVerified: json['isVerified'] as bool? ?? false,
+      verificationStatus: json['verificationStatus'] as String? ?? 'unsubmitted',
       latitude: double.tryParse(json['latitude']?.toString() ?? ''),
       longitude: double.tryParse(json['longitude']?.toString() ?? ''),
       services: services,
