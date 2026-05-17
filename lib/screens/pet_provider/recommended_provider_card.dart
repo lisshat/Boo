@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 
 class RecommendedProviderCard extends StatelessWidget {
   final ProviderModel provider;
-  const RecommendedProviderCard({super.key, required this.provider});
+  final VoidCallback? onReturn;
+  const RecommendedProviderCard({super.key, required this.provider, this.onReturn});
 
   static Widget _imageFallback() => Container(
         height: 120,
@@ -16,12 +17,13 @@ class RecommendedProviderCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       borderRadius: BorderRadius.circular(18),
-      onTap: () {
-        Navigator.pushNamed(
+      onTap: () async {
+        await Navigator.pushNamed(
           context,
           '/provider-profile',
           arguments: provider,
         );
+        onReturn?.call();
       },
       child: Container(
         width: 240,
@@ -83,13 +85,13 @@ class RecommendedProviderCard extends StatelessWidget {
             Align(
               alignment: Alignment.centerRight,
               child: ElevatedButton(
-                onPressed: () {
-                  // same as tapping the card
-                  Navigator.pushNamed(
+                onPressed: () async {
+                  await Navigator.pushNamed(
                     context,
                     '/provider-profile',
                     arguments: provider,
                   );
+                  onReturn?.call();
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFF68B1F),

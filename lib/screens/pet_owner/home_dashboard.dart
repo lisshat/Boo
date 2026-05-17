@@ -509,8 +509,10 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
                   physics: const NeverScrollableScrollPhysics(),
                   itemCount: providers.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 12),
-                  itemBuilder: (context, index) =>
-                      RecommendedProviderCard(provider: providers[index]),
+                  itemBuilder: (context, index) => RecommendedProviderCard(
+                    provider: providers[index],
+                    onReturn: _fetchProviders,
+                  ),
                 ),
             ],
           );

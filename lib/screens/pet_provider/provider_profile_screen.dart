@@ -330,10 +330,19 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
             const SizedBox(height: 16),
             SectionTitle(
               title: "Reviews",
-              trailing: TextButton(
-                onPressed: () {},
-                child: const Text("See all"),
-              ),
+              trailing: _reviews.isNotEmpty
+                  ? TextButton(
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => _AllReviewsScreen(
+                            providerName: widget.provider.name,
+                            reviews: _reviews,
+                          ),
+                        ),
+                      ),
+                      child: const Text("See all"),
+                    )
+                  : null,
             ),
             const SizedBox(height: 8),
             ReviewPreviewCard(reviews: _reviews),
@@ -831,6 +840,231 @@ class ReviewPreviewCard extends StatelessWidget {
               "No reviews yet. Be the first to book and leave feedback.",
               style: TextStyle(color: Color(0xFF6B7280)),
             ),
+    );
+  }
+}
+
+// ── Owner-facing all-reviews screen ──────────────────────────────────────────
+
+class _AllReviewsScreen extends StatefulWidget {
+  final String providerName;
+  final List<ReviewModel> reviews;
+
+  const _AllReviewsScreen({required this.providerName, required this.reviews});
+
+  @override
+  State<_AllReviewsScreen> createState() => _AllReviewsScreenState();
+}
+
+class _AllReviewsScreenState extends State<_AllReviewsScreen> {
+  static const _bg = Color(0xFFF6F7FB);
+
+  int? _filterRating; // null = all
+
+  List<ReviewModel> get _filtered => _filterRating == null
+      ? widget.reviews
+      : widget.reviews.where((r) => r.rating == _filterRating).toList();
+
+  @override
+  Widget build(BuildContext context) {
+    final filtered = _filtered;
+
+    return Scaffold(
+      backgroundColor: _bg,
+      appBar: AppBar(
+        backgroundColor: _bg,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text(
+          '${widget.providerName} Reviews',
+          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+      body: Column(
+        children: [
+          // Rating filter chips
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+            child: Row(
+              children: [
+                _RatingChip(
+                  label: 'All',
+                  selected: _filterRating == null,
+                  onTap: () => setState(() => _filterRating = null),
+                ),
+                ...List.generate(5, (i) {
+                  final star = 5 - i;
+                  final count = widget.reviews.where((r) => r.rating == star).length;
+                  return _RatingChip(
+                    label: '${'★' * star}  ($count)',
+                    selected: _filterRating == star,
+                    onTap: count > 0 ? () => setState(() => _filterRating = star) : null,
+                  );
+                }),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          // Reviews list
+          Expanded(
+            child: filtered.isEmpty
+                ? Center(
+                    child: Text(
+                      'No ${_filterRating != null ? '$_filterRating-star ' : ''}reviews',
+                      style: const TextStyle(color: Color(0xFF6B7280)),
+                    ),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: filtered.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 12),
+                    itemBuilder: (_, i) => _ReviewTile(review: filtered[i]),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RatingChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  const _RatingChip({required this.label, required this.selected, this.onTap});
+
+  static const _orange = Color(0xFFF68B1F);
+
+  @override
+  Widget build(BuildContext context) {
+    final disabled = onTap == null;
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: selected ? _orange : disabled ? const Color(0xFFF3F4F6) : Colors.white,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: selected ? _orange : const Color(0xFFE5E7EB),
+            ),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: selected ? Colors.white : disabled ? const Color(0xFFBDBDBD) : Colors.black87,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ReviewTile extends StatelessWidget {
+  final ReviewModel review;
+  const _ReviewTile({required this.review});
+
+  String _timeAgo(DateTime dt) {
+    final diff = DateTime.now().difference(dt);
+    if (diff.inDays >= 365) return '${diff.inDays ~/ 365}y ago';
+    if (diff.inDays >= 30) return '${diff.inDays ~/ 30}mo ago';
+    if (diff.inDays >= 1) return '${diff.inDays}d ago';
+    if (diff.inHours >= 1) return '${diff.inHours}h ago';
+    return 'just now';
+  }
+
+  static const _orange = Color(0xFFF68B1F);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFEAECEF)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 18,
+                backgroundColor: _orange.withValues(alpha: 0.12),
+                child: Text(
+                  review.ownerName.isNotEmpty ? review.ownerName[0].toUpperCase() : '?',
+                  style: const TextStyle(color: _orange, fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(review.ownerName,
+                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                    Row(
+                      children: [
+                        ...List.generate(5, (i) => Icon(
+                          i < review.rating ? Icons.star_rounded : Icons.star_outline_rounded,
+                          size: 14,
+                          color: Colors.amber,
+                        )),
+                        const SizedBox(width: 6),
+                        Text(
+                          _timeAgo(review.createdAt),
+                          style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (review.text != null && review.text!.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              review.text!,
+              style: const TextStyle(fontSize: 14, color: Color(0xFF4B5563), height: 1.45),
+            ),
+          ],
+          if (review.providerReply != null) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF6F7FB),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFE5E7EB)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Provider replied',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF9CA3AF))),
+                  const SizedBox(height: 4),
+                  Text(review.providerReply!,
+                      style: const TextStyle(fontSize: 13, color: Color(0xFF374151), height: 1.4)),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
