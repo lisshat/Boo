@@ -42,3 +42,18 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 .vercel
+
+# Local secrets and machine-specific credentials
+.claude/settings.local.json
+.vscode/*
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+credentials*.json
+service-account*.json
+*-service-account.json
+*.dump
+*.dump.sql
