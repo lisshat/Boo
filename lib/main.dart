@@ -1,5 +1,6 @@
+import 'dart:async';
+
 import 'package:boo/models/provider_models.dart';
-import 'package:boo/screens/pet_owner_shell.dart';
 import 'package:boo/screens/auth.dart';
 import 'package:boo/screens/auth/forgot_password_screen.dart';
 import 'package:boo/screens/admin/admin_login_screen.dart';
@@ -10,14 +11,21 @@ import 'package:boo/services/auth_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:boo/screens/pet_provider/provider_profile_screen.dart';
+import 'package:boo/screens/pet_owner_shell.dart';
 import 'package:boo/screens/pet_provider/provider_shell.dart';
 import 'package:boo/services/favorites_service.dart';
-import 'package:boo/services/stream_chat_service.dart';
+import 'package:boo/services/push_notification_service.dart';
+import 'package:boo/services/push_navigation_coordinator.dart';
+import 'package:boo/services/revenuecat_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await FavoritesManager.instance.load();
   runApp(const MyApp());
+  // Push setup is optional and intentionally does not block startup routing.
+  unawaited(PushNotificationService.instance.initialize());
+  // RevenueCat Test Store setup is optional and never blocks authentication.
+  unawaited(RevenueCatService.instance.initialize());
 }
 
 class MyApp extends StatelessWidget {
@@ -74,28 +82,46 @@ class _AuthGateState extends State<_AuthGate> {
   void initState() {
     super.initState();
     _roleFuture = _getRole();
+    PushNavigationCoordinator.instance.attach();
+  }
+
+  @override
+  void dispose() {
+    PushNavigationCoordinator.instance.detach();
+    PushNavigationCoordinator.instance.clearAuthentication();
+    super.dispose();
   }
 
   Future<String?> _getRole() async {
-    // Minimum 2.5s on tip screen so it doesn't flash past
-    final results = await Future.wait([
-      _checkAuth(),
-      Future.delayed(const Duration(milliseconds: 2500)),
-    ]);
-    return results[0] as String?;
+    final stopwatch = Stopwatch()..start();
+    // Startup only reads local session metadata. Network restoration happens
+    // lazily in the shell, so a transient network issue must not be treated
+    // as invalid credentials here.
+    final role = await _checkAuth();
+    if (kDebugMode) {
+      debugPrint(
+          '[auth timing] route_ready ${stopwatch.elapsedMilliseconds}ms');
+    }
+    return role;
   }
 
   Future<String?> _checkAuth() async {
+    final stopwatch = Stopwatch()..start();
     final hasToken = await AuthService.instance.hasValidToken();
+    if (kDebugMode) {
+      debugPrint(
+          '[auth timing] stored_session_read ${stopwatch.elapsedMilliseconds}ms');
+    }
     if (!hasToken) return null;
-    await BooStreamChatService.instance.connectFromStoredSession();
+    unawaited(AuthService.instance.associateStoredPushIdentity());
+    // Chat is optional during routing. Chat screens retry their own bounded
+    // connection when opened, so a slow Stream service cannot hold the shell.
     return AuthService.instance.getUserRole();
   }
 
   @override
   Widget build(BuildContext context) {
     if (kIsWeb) return const AdminLoginScreen();
-
     return FutureBuilder<String?>(
       future: _roleFuture,
       builder: (context, snapshot) {
@@ -103,10 +129,10 @@ class _AuthGateState extends State<_AuthGate> {
           return const TipLoadingScreen();
         }
         final role = snapshot.data;
+        PushNavigationCoordinator.instance.setAuthenticatedRole(role);
         if (role == 'admin') return const AdminShell();
         if (role == 'provider') return const ProviderShell();
         if (role == 'owner') return const PetOwnerShell();
-        if (kIsWeb) return const AdminLoginScreen();
         return const BooAuthScreen();
       },
     );

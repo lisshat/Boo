@@ -2,6 +2,10 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:boo/services/auth_service.dart';
+import 'package:boo/services/booking_service.dart';
+import 'package:boo/models/provider_models.dart';
+import 'package:boo/models/navigation_intent.dart';
+import 'package:boo/screens/pet_owner/leave_review_screen.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -15,6 +19,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   static const _bg = Color(0xFFF6F7FB);
 
   List<Map<String, dynamic>> _notifications = [];
+  Map<String, BookingRecord> _bookingsById = {};
   bool _isLoading = true;
   String? _error;
   Timer? _timer;
@@ -34,20 +39,36 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   Future<void> _load() async {
     try {
-      final res = await ApiService.instance.get('/notifications');
+      final results = await Future.wait<dynamic>([
+        ApiService.instance.get('/notifications'),
+        AuthService.instance.getUserRole().then((role) async {
+          if (role != 'owner') return <BookingRecord>[];
+          return BookingService.instance.getBookings();
+        }),
+      ]);
+      final res = results[0] as dynamic;
+      final bookings = results[1] as List<BookingRecord>;
       if (!mounted) return;
       if (res.statusCode == 200) {
         final raw = jsonDecode(res.body) as List<dynamic>;
         setState(() {
           _notifications = raw.cast<Map<String, dynamic>>();
+          _bookingsById = {for (final booking in bookings) booking.id: booking};
           _isLoading = false;
           _error = null;
         });
       } else {
-        setState(() { _isLoading = false; _error = 'Could not load notifications'; });
+        setState(() {
+          _isLoading = false;
+          _error = 'Could not load notifications';
+        });
       }
     } catch (_) {
-      if (mounted) setState(() { _isLoading = false; _error = 'Connection error'; });
+      if (mounted)
+        setState(() {
+          _isLoading = false;
+          _error = 'Connection error';
+        });
     }
   }
 
@@ -63,9 +84,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     await ApiService.instance.patch('/notifications/read-all', {});
     if (!mounted) return;
     setState(() {
-      _notifications = _notifications
-          .map((n) => {...n, 'isRead': true})
-          .toList();
+      _notifications =
+          _notifications.map((n) => {...n, 'isRead': true}).toList();
     });
   }
 
@@ -81,11 +101,57 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
+  bool _isCompletedNotification(Map<String, dynamic> notification) {
+    return notification['type'] == 'booking_completed' &&
+        (notification['relatedId'] as String?)?.isNotEmpty == true;
+  }
+
+  BookingRecord? _reviewBooking(Map<String, dynamic> notification) {
+    final bookingId = notification['relatedId'] as String?;
+    final booking = bookingId == null ? null : _bookingsById[bookingId];
+    if (booking == null ||
+        booking.status != BookingStatus.completed ||
+        booking.hasReview) {
+      return null;
+    }
+    return booking;
+  }
+
+  Future<void> _openReview(Map<String, dynamic> notification) async {
+    final booking = _reviewBooking(notification);
+    if (booking == null) {
+      await _load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('This review is no longer available.')),
+        );
+      }
+      return;
+    }
+    final intent = ReviewBookingIntent(bookingId: booking.id);
+    await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LeaveReviewScreen(
+          bookingId: intent.bookingId,
+          providerName: booking.providerName,
+          serviceName: booking.serviceName,
+        ),
+      ),
+    );
+    if (mounted) await _load();
+  }
+
   void _onTap(int index) async {
+    final n = _notifications[index];
     await _markRead(index);
     if (!mounted) return;
-    final n = _notifications[index];
     final type = n['type'] as String? ?? '';
+
+    if (_isCompletedNotification(n)) {
+      await _openReview(n);
+      return;
+    }
 
     // For booking events, pop back to the shell so user can navigate to bookings
     final bookingTypes = {
@@ -110,7 +176,20 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
     if (diff.inHours < 24) return '${diff.inHours}h ago';
     if (diff.inDays < 7) return '${diff.inDays}d ago';
-    const m = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const m = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ];
     return '${m[dt.month - 1]} ${dt.day}';
   }
 
@@ -170,7 +249,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         elevation: 0,
         title: const Text(
           'Notifications',
-          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 17, color: Colors.black87),
+          style: TextStyle(
+              fontWeight: FontWeight.w700, fontSize: 17, color: Colors.black87),
         ),
         iconTheme: const IconThemeData(color: Colors.black87),
         actions: [
@@ -179,7 +259,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               onPressed: _markAllRead,
               child: const Text(
                 'Mark all read',
-                style: TextStyle(color: _orange, fontWeight: FontWeight.w600, fontSize: 13),
+                style: TextStyle(
+                    color: _orange, fontWeight: FontWeight.w600, fontSize: 13),
               ),
             ),
         ],
@@ -191,11 +272,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(_error!, style: const TextStyle(color: Colors.black45)),
+                      Text(_error!,
+                          style: const TextStyle(color: Colors.black45)),
                       const SizedBox(height: 8),
                       TextButton(
                         onPressed: _load,
-                        child: const Text('Retry', style: TextStyle(color: _orange)),
+                        child: const Text('Retry',
+                            style: TextStyle(color: _orange)),
                       ),
                     ],
                   ),
@@ -218,7 +301,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                           const SizedBox(height: 4),
                           Text(
                             "You're all caught up",
-                            style: TextStyle(color: Colors.grey.shade300, fontSize: 13),
+                            style: TextStyle(
+                                color: Colors.grey.shade300, fontSize: 13),
                           ),
                         ],
                       ),
@@ -257,16 +341,21 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                 borderRadius: BorderRadius.circular(14),
                                 child: Container(
                                   decoration: BoxDecoration(
-                                    color: isRead ? Colors.white : const Color(0xFFFFF8F0),
+                                    color: isRead
+                                        ? Colors.white
+                                        : const Color(0xFFFFF8F0),
                                     border: Border(
                                       left: BorderSide(
-                                        color: isRead ? Colors.transparent : _orange,
+                                        color: isRead
+                                            ? Colors.transparent
+                                            : _orange,
                                         width: 4,
                                       ),
                                     ),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: Colors.black.withValues(alpha: 0.04),
+                                        color: Colors.black
+                                            .withValues(alpha: 0.04),
                                         blurRadius: 6,
                                         offset: const Offset(0, 2),
                                       ),
@@ -274,7 +363,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                   ),
                                   padding: const EdgeInsets.all(14),
                                   child: Row(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Container(
                                         width: 38,
@@ -285,12 +375,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                               : color.withValues(alpha: 0.12),
                                           shape: BoxShape.circle,
                                         ),
-                                        child: Icon(icon, size: 18, color: color),
+                                        child:
+                                            Icon(icon, size: 18, color: color),
                                       ),
                                       const SizedBox(width: 12),
                                       Expanded(
                                         child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
                                           children: [
                                             Text(
                                               n['title'] as String? ?? '',
@@ -302,7 +394,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                                 color: Colors.black87,
                                               ),
                                             ),
-                                            if ((n['message'] as String?)?.isNotEmpty == true) ...[
+                                            if ((n['message'] as String?)
+                                                    ?.isNotEmpty ==
+                                                true) ...[
                                               const SizedBox(height: 3),
                                               Text(
                                                 n['message'] as String,
@@ -316,11 +410,51 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                             ],
                                             const SizedBox(height: 4),
                                             Text(
-                                              _timeAgo(n['createdAt'] as String?),
+                                              _timeAgo(
+                                                  n['createdAt'] as String?),
                                               style: TextStyle(
                                                   fontSize: 11,
                                                   color: Colors.grey.shade400),
                                             ),
+                                            if (_isCompletedNotification(
+                                                n)) ...[
+                                              const SizedBox(height: 8),
+                                              if (_reviewBooking(n) != null)
+                                                SizedBox(
+                                                  height: 40,
+                                                  child: OutlinedButton.icon(
+                                                    onPressed: () =>
+                                                        _openReview(n),
+                                                    icon: const Icon(
+                                                        Icons
+                                                            .rate_review_outlined,
+                                                        size: 16),
+                                                    label: const Text(
+                                                        'Leave a review'),
+                                                    style: OutlinedButton
+                                                        .styleFrom(
+                                                      foregroundColor: _orange,
+                                                      side: const BorderSide(
+                                                          color: _orange),
+                                                      padding: const EdgeInsets
+                                                          .symmetric(
+                                                          horizontal: 12),
+                                                    ),
+                                                  ),
+                                                )
+                                              else if (_bookingsById[
+                                                          n['relatedId']]
+                                                      ?.hasReview ==
+                                                  true)
+                                                const Text(
+                                                  'Review submitted',
+                                                  style: TextStyle(
+                                                      fontSize: 12,
+                                                      fontWeight:
+                                                          FontWeight.w700,
+                                                      color: Colors.green),
+                                                ),
+                                            ],
                                           ],
                                         ),
                                       ),
@@ -328,7 +462,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                         Container(
                                           width: 8,
                                           height: 8,
-                                          margin: const EdgeInsets.only(top: 4, left: 8),
+                                          margin: const EdgeInsets.only(
+                                              top: 4, left: 8),
                                           decoration: const BoxDecoration(
                                             color: _orange,
                                             shape: BoxShape.circle,

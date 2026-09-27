@@ -36,7 +36,8 @@ class _TipLoadingScreenState extends State<TipLoadingScreen>
     super.initState();
     _tipIndex = DateTime.now().millisecond % _tips.length;
 
-    _fadeCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 400));
+    _fadeCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 400));
     _fadeAnim = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeInOut);
     _fadeCtrl.forward();
 
@@ -136,7 +137,8 @@ class _TipLoadingScreenState extends State<TipLoadingScreen>
                   children: [
                     Row(
                       children: const [
-                        Icon(Icons.lightbulb_outline_rounded, size: 16, color: _orange),
+                        Icon(Icons.lightbulb_outline_rounded,
+                            size: 16, color: _orange),
                         SizedBox(width: 6),
                         Text(
                           'Did you know?',

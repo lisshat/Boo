@@ -25,7 +25,10 @@ class _BookingsPageState extends State<BookingsPage>
   }
 
   Future<void> _loadBookings() async {
-    setState(() { _isLoading = true; _error = null; });
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
     try {
       final bookings = await BookingService.instance.getBookings();
       if (mounted) {
@@ -35,7 +38,11 @@ class _BookingsPageState extends State<BookingsPage>
         });
       }
     } catch (_) {
-      if (mounted) setState(() { _error = 'Could not load bookings'; _isLoading = false; });
+      if (mounted)
+        setState(() {
+          _error = 'Could not load bookings';
+          _isLoading = false;
+        });
     }
   }
 
@@ -46,7 +53,9 @@ class _BookingsPageState extends State<BookingsPage>
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not cancel booking'), backgroundColor: Colors.red),
+          const SnackBar(
+              content: Text('Could not cancel booking'),
+              backgroundColor: Colors.red),
         );
       }
     }
@@ -98,15 +107,20 @@ class _BookingsPageState extends State<BookingsPage>
           ),
           Expanded(
             child: _isLoading
-                ? const Center(child: CircularProgressIndicator(color: Color(0xFFF68B1F)))
+                ? const Center(
+                    child: CircularProgressIndicator(color: Color(0xFFF68B1F)))
                 : _error != null
                     ? Center(
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(_error!, style: const TextStyle(color: Color(0xFF9CA3AF))),
+                            Text(_error!,
+                                style:
+                                    const TextStyle(color: Color(0xFF9CA3AF))),
                             const SizedBox(height: 12),
-                            TextButton(onPressed: _loadBookings, child: const Text('Retry')),
+                            TextButton(
+                                onPressed: _loadBookings,
+                                child: const Text('Retry')),
                           ],
                         ),
                       )
@@ -180,8 +194,8 @@ class _BookingList extends StatelessWidget {
   Widget build(BuildContext context) {
     if (bookings.isEmpty) {
       return Center(
-        child: Text(emptyLabel,
-            style: const TextStyle(color: Color(0xFF9CA3AF))),
+        child:
+            Text(emptyLabel, style: const TextStyle(color: Color(0xFF9CA3AF))),
       );
     }
     return ListView.separated(
@@ -223,8 +237,7 @@ class _BookingCardState extends State<_BookingCard> {
 
   bool get _isStale =>
       _isActiveBookingStatus(widget.booking.status) &&
-      widget.booking.bookingDatetime
-          .isBefore(DateTime.now());
+      widget.booking.bookingDatetime.isBefore(DateTime.now());
 
   bool get _canAct =>
       _isActiveBookingStatus(widget.booking.status) && !_isStale;
@@ -239,7 +252,8 @@ class _BookingCardState extends State<_BookingCard> {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (_) => Padding(
         padding: const EdgeInsets.fromLTRB(24, 24, 24, 36),
         child: Column(
@@ -248,10 +262,14 @@ class _BookingCardState extends State<_BookingCard> {
           children: [
             Row(
               children: [
-                const Icon(Icons.cancel_outlined, color: Color(0xFFEF4444), size: 22),
+                const Icon(Icons.cancel_outlined,
+                    color: Color(0xFFEF4444), size: 22),
                 const SizedBox(width: 8),
                 const Text('Booking Declined',
-                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Color(0xFFEF4444))),
+                    style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFFEF4444))),
               ],
             ),
             const SizedBox(height: 20),
@@ -259,7 +277,9 @@ class _BookingCardState extends State<_BookingCard> {
             const SizedBox(height: 10),
             _DetailRow(label: 'Service', value: booking.serviceName),
             const SizedBox(height: 10),
-            _DetailRow(label: 'Date & time', value: '${_formatDate(booking.date)} · ${booking.time}'),
+            _DetailRow(
+                label: 'Date & time',
+                value: '${_formatDate(booking.date)} · ${booking.time}'),
             const SizedBox(height: 10),
             _DetailRow(label: 'Amount', value: booking.priceLabel),
             const SizedBox(height: 16),
@@ -275,11 +295,16 @@ class _BookingCardState extends State<_BookingCard> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text('Reason for declining',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFB91C1C))),
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFFB91C1C))),
                   const SizedBox(height: 6),
                   Text(
-                    booking.declineReason ?? 'The provider did not provide a reason.',
-                    style: const TextStyle(fontSize: 14, color: Color(0xFF374151), height: 1.4),
+                    booking.declineReason ??
+                        'The provider did not provide a reason.',
+                    style: const TextStyle(
+                        fontSize: 14, color: Color(0xFF374151), height: 1.4),
                   ),
                 ],
               ),
@@ -291,10 +316,13 @@ class _BookingCardState extends State<_BookingCard> {
                 onPressed: () => Navigator.pop(context),
                 style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
                   side: const BorderSide(color: Color(0xFFE5E7EB)),
                 ),
-                child: const Text('Close', style: TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF374151))),
+                child: const Text('Close',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w600, color: Color(0xFF374151))),
               ),
             ),
           ],
@@ -305,8 +333,18 @@ class _BookingCardState extends State<_BookingCard> {
 
   String _formatDate(DateTime dt) {
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
     ];
     return '${months[dt.month - 1]} ${dt.day}, ${dt.year}';
   }
@@ -394,8 +432,8 @@ class _BookingCardState extends State<_BookingCard> {
     );
     if (time == null || !mounted) return;
 
-    final newDatetime = DateTime(
-        date.year, date.month, date.day, time.hour, time.minute);
+    final newDatetime =
+        DateTime(date.year, date.month, date.day, time.hour, time.minute);
 
     // Step 3: confirmation sheet
     final confirmed = await showModalBottomSheet<bool>(
@@ -514,8 +552,7 @@ class _BookingCardState extends State<_BookingCard> {
               const SizedBox(width: 6),
               Text(
                 '${_formatDate(booking.date)}  ·  ${booking.time}',
-                style: const TextStyle(
-                    color: Color(0xFF374151), fontSize: 13),
+                style: const TextStyle(color: Color(0xFF374151), fontSize: 13),
               ),
               const Spacer(),
               Text(booking.priceLabel,
@@ -537,13 +574,17 @@ class _BookingCardState extends State<_BookingCard> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text('This booking was declined',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFB91C1C))),
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFFB91C1C))),
                   const SizedBox(height: 4),
                   Text(
                     booking.declineReason != null
                         ? 'Reason: ${booking.declineReason}'
                         : 'The provider did not provide a reason.',
-                    style: const TextStyle(fontSize: 12, color: Color(0xFFEF4444)),
+                    style:
+                        const TextStyle(fontSize: 12, color: Color(0xFFEF4444)),
                   ),
                 ],
               ),
@@ -614,7 +655,8 @@ class _BookingCardState extends State<_BookingCard> {
                       borderRadius: BorderRadius.circular(10)),
                 ),
                 child: const Text('View Details',
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                    style:
+                        TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
               ),
             )
           else if (booking.status == BookingStatus.completed &&
@@ -637,7 +679,8 @@ class _BookingCardState extends State<_BookingCard> {
                 },
                 icon: const Icon(Icons.star_rounded, size: 15),
                 label: const Text('Leave a Review',
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                    style:
+                        TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: orange,
                   foregroundColor: Colors.white,
@@ -648,7 +691,8 @@ class _BookingCardState extends State<_BookingCard> {
                 ),
               ),
             )
-          else if (booking.status == BookingStatus.completed && booking.hasReview)
+          else if (booking.status == BookingStatus.completed &&
+              booking.hasReview)
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 10),
@@ -660,15 +704,17 @@ class _BookingCardState extends State<_BookingCard> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  ...List.generate(5, (i) => Icon(
-                    i < (booking.reviewRating ?? 0)
-                        ? Icons.star_rounded
-                        : Icons.star_outline_rounded,
-                    size: 16,
-                    color: i < (booking.reviewRating ?? 0)
-                        ? const Color(0xFFF59E0B)
-                        : const Color(0xFF9CA3AF),
-                  )),
+                  ...List.generate(
+                      5,
+                      (i) => Icon(
+                            i < (booking.reviewRating ?? 0)
+                                ? Icons.star_rounded
+                                : Icons.star_outline_rounded,
+                            size: 16,
+                            color: i < (booking.reviewRating ?? 0)
+                                ? const Color(0xFFF59E0B)
+                                : const Color(0xFF9CA3AF),
+                          )),
                   const SizedBox(width: 8),
                   const Text(
                     'Review submitted',
@@ -694,8 +740,8 @@ class _BookingCardState extends State<_BookingCard> {
                       borderRadius: BorderRadius.circular(10)),
                 ),
                 child: const Text('View Details',
-                    style: TextStyle(
-                        fontWeight: FontWeight.w700, fontSize: 13)),
+                    style:
+                        TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
               ),
             ),
         ],
@@ -715,8 +761,18 @@ class _RescheduleConfirmSheet extends StatelessWidget {
 
   String _fmt(DateTime dt) {
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
     ];
     final h = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
     final m = dt.minute.toString().padLeft(2, '0');
@@ -756,11 +812,7 @@ class _RescheduleConfirmSheet extends StatelessWidget {
           _TimeRow(
               label: 'Current', datetime: booking.bookingDatetime, fmt: _fmt),
           const SizedBox(height: 10),
-          _TimeRow(
-              label: 'New',
-              datetime: newDatetime,
-              fmt: _fmt,
-              isNew: true),
+          _TimeRow(label: 'New', datetime: newDatetime, fmt: _fmt, isNew: true),
           const SizedBox(height: 28),
           SizedBox(
             width: double.infinity,
@@ -785,8 +837,8 @@ class _RescheduleConfirmSheet extends StatelessWidget {
             onPressed: () => Navigator.pop(context, false),
             child: const Text(
               'Go Back',
-              style: TextStyle(
-                  color: Colors.black45, fontWeight: FontWeight.w600),
+              style:
+                  TextStyle(color: Colors.black45, fontWeight: FontWeight.w600),
             ),
           ),
         ],
@@ -819,16 +871,14 @@ class _TimeRow extends StatelessWidget {
         ),
         Expanded(
           child: Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
               color: isNew
                   ? const Color(0xFFF68B1F).withOpacity(0.08)
                   : const Color(0xFFF6F7FB),
               borderRadius: BorderRadius.circular(10),
               border: isNew
-                  ? Border.all(
-                      color: const Color(0xFFF68B1F).withOpacity(0.4))
+                  ? Border.all(color: const Color(0xFFF68B1F).withOpacity(0.4))
                   : null,
             ),
             child: Text(
@@ -836,9 +886,8 @@ class _TimeRow extends StatelessWidget {
               style: TextStyle(
                 fontWeight: FontWeight.w700,
                 fontSize: 13,
-                color: isNew
-                    ? const Color(0xFFF68B1F)
-                    : const Color(0xFF374151),
+                color:
+                    isNew ? const Color(0xFFF68B1F) : const Color(0xFF374151),
               ),
             ),
           ),

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:boo/services/auth_service.dart';
 import 'owner_onboarding_step2.dart';
+import 'onboarding_scroll_view.dart';
 
 class OwnerOnboardingStep1 extends StatefulWidget {
   const OwnerOnboardingStep1({super.key});
@@ -17,6 +18,7 @@ class _OwnerOnboardingStep1State extends State<OwnerOnboardingStep1> {
   final _petNameController = TextEditingController();
   String _firstName = '';
   bool _loadingName = true;
+  bool _namePrefillFailed = false;
 
   @override
   void initState() {
@@ -37,10 +39,14 @@ class _OwnerOnboardingStep1State extends State<OwnerOnboardingStep1> {
       if (res.statusCode == 200) {
         final body = jsonDecode(res.body) as Map<String, dynamic>;
         final full = (body['fullName'] as String? ?? '').trim();
-        setState(() => _firstName = full.split(' ').first);
+        if (mounted) setState(() => _firstName = full.split(' ').first);
+      } else if (mounted) {
+        setState(() => _namePrefillFailed = true);
       }
+    } catch (_) {
+      if (mounted) setState(() => _namePrefillFailed = true);
     } finally {
-      setState(() => _loadingName = false);
+      if (mounted) setState(() => _loadingName = false);
     }
   }
 
@@ -62,8 +68,7 @@ class _OwnerOnboardingStep1State extends State<OwnerOnboardingStep1> {
     return Scaffold(
       backgroundColor: _bg,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: OnboardingScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -75,16 +80,26 @@ class _OwnerOnboardingStep1State extends State<OwnerOnboardingStep1> {
               _loadingName
                   ? const SizedBox(height: 40)
                   : Text(
-                      'Hey $_firstName 👋',
+                      _firstName.isEmpty
+                          ? 'Hey there 👋'
+                          : 'Hey $_firstName 👋',
                       style: const TextStyle(
                         fontSize: 28,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
               const SizedBox(height: 8),
+              if (_namePrefillFailed) ...[
+                const Text(
+                  "We couldn't load your name. You can still add your pet details below.",
+                  style: TextStyle(fontSize: 13, color: Colors.black54),
+                ),
+                const SizedBox(height: 8),
+              ],
               const Text(
                 "Let's set up your Boo account so you can find and book pet care in your neighbourhood.",
-                style: TextStyle(fontSize: 14, color: Colors.black54, height: 1.5),
+                style:
+                    TextStyle(fontSize: 14, color: Colors.black54, height: 1.5),
               ),
               const SizedBox(height: 36),
               const Text(
@@ -100,7 +115,8 @@ class _OwnerOnboardingStep1State extends State<OwnerOnboardingStep1> {
                   hintStyle: const TextStyle(color: Colors.black38),
                   filled: true,
                   fillColor: Colors.white,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide.none,
@@ -153,7 +169,16 @@ class _TopBar extends StatelessWidget {
     return Row(
       children: [
         GestureDetector(
-          onTap: () => Navigator.pop(context),
+          onTap: () {
+            if (Navigator.canPop(context)) {
+              Navigator.pop(context);
+            } else {
+              Navigator.of(context).pushNamedAndRemoveUntil(
+                '/login',
+                (_) => false,
+              );
+            }
+          },
           child: const Icon(Icons.arrow_back_ios_new, size: 18),
         ),
         const SizedBox(width: 12),
@@ -195,4 +220,3 @@ class OnboardingProgressDots extends StatelessWidget {
     );
   }
 }
-

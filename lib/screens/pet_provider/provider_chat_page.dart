@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:boo/services/stream_chat_service.dart';
+import 'package:boo/services/report_service.dart';
+import 'package:boo/widgets/report_form_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:stream_chat_flutter/stream_chat_flutter.dart';
 
@@ -34,7 +36,11 @@ class _ProviderChatPageState extends State<ProviderChatPage> {
     final connected = await streamService.connectFromStoredSession();
     final userId = streamService.currentUserId;
     if (!connected || userId == null) {
-      if (mounted) setState(() { _loading = false; _unavailable = true; });
+      if (mounted)
+        setState(() {
+          _loading = false;
+          _unavailable = true;
+        });
       return;
     }
     _notifSub = streamService.client
@@ -56,7 +62,12 @@ class _ProviderChatPageState extends State<ProviderChatPage> {
       watch: true,
       state: true,
     );
-    if (mounted) setState(() { _channelStream = stream; _loading = false; _unavailable = false; });
+    if (mounted)
+      setState(() {
+        _channelStream = stream;
+        _loading = false;
+        _unavailable = false;
+      });
   }
 
   @override
@@ -98,7 +109,18 @@ class _ProviderChatPageState extends State<ProviderChatPage> {
           stream: _channelStream,
           builder: (context, channelSnapshot) {
             final channels = channelSnapshot.data ?? const <Channel>[];
-            final unreadCount = channels.fold<int>(
+            final visibleChannels = channels.where((c) {
+              if (!_hasConversationHistory(c)) return false;
+              if (_hiddenChannelKeys.contains(_channelKey(c))) return false;
+              if (_searchQuery.isEmpty) return true;
+              final other = _otherUser(c);
+              final nameMatch =
+                  other?.name.toLowerCase().contains(_searchQuery) ?? false;
+              final channelMatch =
+                  c.name?.toLowerCase().contains(_searchQuery) ?? false;
+              return nameMatch || channelMatch;
+            }).toList();
+            final unreadCount = visibleChannels.fold<int>(
               0,
               (sum, channel) => sum + (channel.state?.unreadCount ?? 0),
             );
@@ -151,8 +173,8 @@ class _ProviderChatPageState extends State<ProviderChatPage> {
                     style: const TextStyle(fontSize: 14),
                     decoration: InputDecoration(
                       hintText: 'Search conversations',
-                      hintStyle: TextStyle(
-                          color: Colors.grey.shade400, fontSize: 14),
+                      hintStyle:
+                          TextStyle(color: Colors.grey.shade400, fontSize: 14),
                       prefixIcon: const Icon(Icons.search,
                           color: Color(0xFF9CA3AF), size: 18),
                       suffixIcon: _searchQuery.isNotEmpty
@@ -171,18 +193,15 @@ class _ProviderChatPageState extends State<ProviderChatPage> {
                           horizontal: 14, vertical: 10),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
-                        borderSide:
-                            const BorderSide(color: Color(0xFFEAECEF)),
+                        borderSide: const BorderSide(color: Color(0xFFEAECEF)),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
-                        borderSide:
-                            const BorderSide(color: Color(0xFFEAECEF)),
+                        borderSide: const BorderSide(color: Color(0xFFEAECEF)),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
-                        borderSide:
-                            const BorderSide(color: Color(0xFFF68B1F)),
+                        borderSide: const BorderSide(color: Color(0xFFF68B1F)),
                       ),
                     ),
                   ),
@@ -194,22 +213,7 @@ class _ProviderChatPageState extends State<ProviderChatPage> {
                         channelSnapshot.connectionState ==
                             ConnectionState.waiting,
                     unavailable: _unavailable,
-                    channels: channels.where((c) {
-                      if (_hiddenChannelKeys.contains(_channelKey(c))) {
-                        return false;
-                      }
-                      if (_searchQuery.isEmpty) return true;
-                      final other = _otherUser(c);
-                      final nameMatch = other?.name
-                              ?.toLowerCase()
-                              .contains(_searchQuery) ??
-                          false;
-                      final channelMatch = c.name
-                              ?.toLowerCase()
-                              .contains(_searchQuery) ??
-                          false;
-                      return nameMatch || channelMatch;
-                    }).toList(),
+                    channels: visibleChannels,
                   ),
                 ),
               ],
@@ -256,11 +260,15 @@ class _ProviderChatPageState extends State<ProviderChatPage> {
             child: _ThreadTile(
               channel: channel,
               onReadChanged: () => setState(() {}),
-              onSelfChannel: () {
+              onSelfChannel: () async {
                 setState(
                   () => _hiddenChannelKeys.add(_channelKey(channel)),
                 );
-                channel.hide().catchError((_) {});
+                try {
+                  await channel.hide();
+                } catch (_) {
+                  // Keep the channel hidden locally if Stream is unavailable.
+                }
               },
             ),
           );
@@ -373,7 +381,8 @@ class _ThreadTile extends StatelessWidget {
 
     final otherUser = _otherUser(channel);
     if (otherUser == null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => onSelfChannel?.call());
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => onSelfChannel?.call());
       return const SizedBox.shrink();
     }
 
@@ -617,6 +626,27 @@ class _ProviderConversationScreenState
     });
   }
 
+  Future<void> _reportConversation() async {
+    final channelId = widget.channel.id;
+    if (channelId == null || channelId.trim().isEmpty) return;
+    final submitted = await showReportForm(
+      context,
+      title: 'Report conversation',
+      onSubmit: (reason, description) => ReportService.instance.submit(
+        streamChannelType: widget.channel.type,
+        streamChannelId: channelId,
+        reason: reason,
+        description: description,
+      ),
+    );
+    if (submitted == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Report received. Boo’s team will review it.')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final otherUser = _otherUser(widget.channel);
@@ -632,32 +662,46 @@ class _ProviderConversationScreenState
           children: [
             _Avatar(user: otherUser),
             const SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _conversationName(widget.channel, otherUser),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 15,
-                    color: Color(0xFF111827),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _conversationName(widget.channel, otherUser),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                      color: Color(0xFF111827),
+                    ),
                   ),
-                ),
-                Text(
-                  widget.channel.name ?? 'Boo chat',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: Color(0xFF9CA3AF),
+                  Text(
+                    widget.channel.name ?? 'Boo chat',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF9CA3AF),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ],
         ),
         actions: [
-          IconButton(
-            onPressed: () {},
-            icon: const Icon(Icons.more_vert, color: Colors.black54),
+          PopupMenuButton<String>(
+            tooltip: 'Conversation safety actions',
+            onSelected: (value) {
+              if (value == 'report') _reportConversation();
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem<String>(
+                value: 'report',
+                child: Text('Report conversation'),
+              ),
+            ],
           ),
         ],
       ),
@@ -839,6 +883,13 @@ Message? _lastMessage(Channel channel) {
 
 DateTime? _lastMessageAt(Channel channel) {
   return channel.state?.channelState.channel?.lastMessageAt;
+}
+
+bool _hasConversationHistory(Channel channel) {
+  final state = channel.state;
+  if (state == null) return true;
+  return state.messages.isNotEmpty ||
+      state.channelState.channel?.lastMessageAt != null;
 }
 
 String _channelKey(Channel channel) {

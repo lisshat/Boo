@@ -1,6 +1,9 @@
+import 'dart:convert';
+
 import 'package:boo/models/provider_models.dart';
 import 'package:boo/screens/pet_provider/provider_chat_page.dart';
 import 'package:boo/services/booking_service.dart';
+import 'package:boo/services/auth_service.dart';
 import 'package:boo/services/stream_chat_service.dart';
 import 'package:boo/utils/pricing_utils.dart';
 import 'package:flutter/material.dart';
@@ -498,7 +501,8 @@ class _BookingCardState extends State<_BookingCard> {
 
   bool get _canComplete =>
       widget.booking.status == ProviderBookingStatus.accepted &&
-      DateTime.now().isAfter(widget.booking.bookingDatetime);
+      DateTime.now().isAfter(widget.booking.bookingDatetime
+          .add(Duration(minutes: widget.booking.durationMinutes)));
 
   @override
   void initState() {
@@ -539,10 +543,15 @@ class _BookingCardState extends State<_BookingCard> {
     );
     if (confirmed != true || !mounted) return;
     setState(() => _completing = true);
-    final ok = await BookingService.instance.completeBooking(widget.booking.id);
+    BookingException? failure;
+    try {
+      await BookingService.instance.completeBooking(widget.booking.id);
+    } on BookingException catch (error) {
+      failure = error;
+    }
     if (!mounted) return;
     setState(() => _completing = false);
-    if (ok) {
+    if (failure == null) {
       widget.onComplete?.call();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -552,10 +561,10 @@ class _BookingCardState extends State<_BookingCard> {
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Could not complete booking'),
+        SnackBar(
+            content: Text(failure.message),
             backgroundColor: Colors.red,
-            duration: Duration(seconds: 2)),
+            duration: const Duration(seconds: 2)),
       );
     }
   }
@@ -582,11 +591,29 @@ class _BookingCardState extends State<_BookingCard> {
         throw Exception('Chat is unavailable. Please log in again.');
       }
 
-      final channel = await streamService.directMessagingChannel(
-        otherUserId: ownerId,
-        extraData: {
-          'latest_booking_id': widget.booking.id,
-        },
+      final response = await ApiService.instance
+          .post('/bookings/${widget.booking.id}/init-chat', {});
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception(
+            'Unable to authorize this conversation. Please try again.');
+      }
+      final body = jsonDecode(response.body);
+      if (body is! Map<String, dynamic>) {
+        throw Exception('The chat authorization response was invalid.');
+      }
+      final channelId = body['channelId'];
+      final channelType = body['channelType'];
+      if (channelId is! String || channelId.trim().isEmpty) {
+        throw Exception(
+            'The chat authorization response was missing a channel.');
+      }
+      if (channelType != null &&
+          (channelType is! String || channelType.trim().isEmpty)) {
+        throw Exception('The chat authorization response was invalid.');
+      }
+      final channel = await streamService.openAuthorizedChannel(
+        channelId: channelId,
+        channelType: channelType is String ? channelType : 'messaging',
       );
 
       if (!mounted) return;
@@ -614,28 +641,32 @@ class _BookingCardState extends State<_BookingCard> {
       actions: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          OutlinedButton.icon(
-            onPressed: _openingChat ? null : _messageOwner,
-            icon: _openingChat
-                ? const SizedBox(
-                    width: 14,
-                    height: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.chat_bubble_outline_rounded, size: 16),
-            label: const Text(
-              'Message Owner',
-              style: TextStyle(fontWeight: FontWeight.w700),
-            ),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: _orange,
-              side: const BorderSide(color: _orange),
-              padding: const EdgeInsets.symmetric(vertical: 11),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
+          if (widget.booking.status == ProviderBookingStatus.accepted)
+            OutlinedButton.icon(
+              onPressed: _openingChat ? null : _messageOwner,
+              icon: _openingChat
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: _orange,
+                      ),
+                    )
+                  : const Icon(Icons.chat_bubble_outline_rounded, size: 16),
+              label: Text(
+                _openingChat ? 'Opening chat…' : 'Message Owner',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: _orange,
+                side: const BorderSide(color: _orange),
+                padding: const EdgeInsets.symmetric(vertical: 11),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
               ),
             ),
-          ),
           if (_canComplete) ...[
             const SizedBox(height: 8),
             ElevatedButton.icon(

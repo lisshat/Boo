@@ -1,4 +1,5 @@
 import 'package:boo/services/verification_upload_service.dart';
+import 'package:boo/services/email_verification_coordinator.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
@@ -59,9 +60,17 @@ class _VerificationUploadScreenState extends State<VerificationUploadScreen> {
     }
   }
 
-  Future<void> _submitAll() async {
+  Future<void> _submitAll({bool allowVerificationRetry = true}) async {
+    if (!await EmailVerificationCoordinator.ensureConfirmed(
+      context,
+      actionLabel: 'Submit provider documents',
+    )) {
+      return;
+    }
+
     setState(() => _submitting = true);
     final errors = <String>[];
+    var requiresEmailConfirmation = false;
     try {
       if (_idFile != null) {
         try {
@@ -71,6 +80,10 @@ class _VerificationUploadScreenState extends State<VerificationUploadScreen> {
           );
           if (mounted) setState(() => _idFile = null);
         } catch (e) {
+          if (e is VerificationUploadException &&
+              e.code == 'EMAIL_VERIFICATION_REQUIRED') {
+            requiresEmailConfirmation = true;
+          }
           errors.add('ID: ${e.toString().replaceFirst('Exception: ', '')}');
         }
       }
@@ -82,7 +95,12 @@ class _VerificationUploadScreenState extends State<VerificationUploadScreen> {
           );
           if (mounted) setState(() => _certFile = null);
         } catch (e) {
-          errors.add('Certificate: ${e.toString().replaceFirst('Exception: ', '')}');
+          if (e is VerificationUploadException &&
+              e.code == 'EMAIL_VERIFICATION_REQUIRED') {
+            requiresEmailConfirmation = true;
+          }
+          errors.add(
+              'Certificate: ${e.toString().replaceFirst('Exception: ', '')}');
         }
       }
     } finally {
@@ -90,6 +108,16 @@ class _VerificationUploadScreenState extends State<VerificationUploadScreen> {
     }
 
     if (!mounted) return;
+
+    if (requiresEmailConfirmation && allowVerificationRetry) {
+      if (await EmailVerificationCoordinator.ensureConfirmed(
+        context,
+        actionLabel: 'Submit provider documents',
+      )) {
+        await _submitAll(allowVerificationRetry: false);
+      }
+      return;
+    }
 
     if (errors.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -138,7 +166,8 @@ class _VerificationUploadScreenState extends State<VerificationUploadScreen> {
               const SizedBox(height: 16),
               const Text(
                 'JPEG, PNG, PDF or DOCX · max 50 MB',
-                style: TextStyle(fontSize: 11, color: Colors.black38, letterSpacing: 0.3),
+                style: TextStyle(
+                    fontSize: 11, color: Colors.black38, letterSpacing: 0.3),
               ),
               const SizedBox(height: 10),
               _UploadTile(
@@ -196,7 +225,8 @@ class _VerificationUploadScreenState extends State<VerificationUploadScreen> {
               if (snapshot.connectionState == ConnectionState.waiting)
                 const Padding(
                   padding: EdgeInsets.only(top: 16),
-                  child: Center(child: CircularProgressIndicator(color: _orange)),
+                  child:
+                      Center(child: CircularProgressIndicator(color: _orange)),
                 )
               else if (documents.isNotEmpty) ...[
                 const SizedBox(height: 16),
@@ -331,7 +361,8 @@ class _UploadTile extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w600, fontSize: 14),
                   ),
                   const SizedBox(height: 2),
                   Text(

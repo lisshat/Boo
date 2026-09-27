@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:boo/screens/pet_owner_shell.dart';
 import 'package:boo/services/auth_service.dart';
 import 'owner_onboarding_step1.dart';
+import 'onboarding_scroll_view.dart';
 
 class OwnerOnboardingStep3 extends StatefulWidget {
   final String petName;
@@ -62,8 +63,7 @@ class _OwnerOnboardingStep3State extends State<OwnerOnboardingStep3> {
     return Scaffold(
       backgroundColor: _bg,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: OnboardingScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -74,12 +74,14 @@ class _OwnerOnboardingStep3State extends State<OwnerOnboardingStep3> {
               const SizedBox(height: 40),
               const Text(
                 'Find care right in your\nneighbourhood',
-                style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, height: 1.3),
+                style: TextStyle(
+                    fontSize: 26, fontWeight: FontWeight.bold, height: 1.3),
               ),
               const SizedBox(height: 12),
               const Text(
                 "We'll show you vetted providers — groomers, trainers and boarders near you — so you can find and book via WhatsApp in minutes.",
-                style: TextStyle(fontSize: 14, color: Colors.black54, height: 1.6),
+                style:
+                    TextStyle(fontSize: 14, color: Colors.black54, height: 1.6),
               ),
               const SizedBox(height: 48),
               _FeatureRow(
@@ -137,7 +139,8 @@ class _OwnerOnboardingStep3State extends State<OwnerOnboardingStep3> {
                               ),
                             ),
                             SizedBox(width: 8),
-                            Icon(Icons.arrow_forward, color: Colors.white, size: 18),
+                            Icon(Icons.arrow_forward,
+                                color: Colors.white, size: 18),
                           ],
                         ),
                 ),
@@ -168,7 +171,8 @@ class _OnboardingTopBar extends StatelessWidget {
           child: const Icon(Icons.arrow_back_ios_new, size: 18),
         ),
         const SizedBox(width: 12),
-        const Text('Boo', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        const Text('Boo',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
       ],
     );
   }

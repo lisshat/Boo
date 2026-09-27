@@ -1,4 +1,5 @@
 import 'package:boo/screens/admin/admin_theme.dart';
+import 'package:boo/screens/admin/admin_moderation_reports_page.dart';
 import 'package:boo/services/admin_service.dart';
 import 'package:boo/services/report_pdf_service.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -17,6 +18,7 @@ class _AdminReportsPageState extends State<AdminReportsPage> {
   @override
   Widget build(BuildContext context) {
     final tabs = [
+      'Moderation\nQueue',
       'User\nSummary',
       'Provider\nPerformance',
       'Booking\nActivity',
@@ -26,6 +28,7 @@ class _AdminReportsPageState extends State<AdminReportsPage> {
       'Ownership\n(Pets)',
     ];
     final pages = [
+      const AdminModerationReportsPage(),
       const _UserSummaryReport(),
       const _ProviderPerformanceReport(),
       const _BookingActivityReport(),
@@ -860,7 +863,10 @@ class _TrustSafetyReportState extends State<_TrustSafetyReport> {
 
   Future<void> _warn(Map<String, dynamic> row) async {
     try {
-      await AdminService.instance.warnUser(row['owner_id'].toString());
+      await AdminService.instance.warnUser(
+        row['owner_id'].toString(),
+        message: 'Policy violation notice',
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Warning sent to ${row['full_name']}')),
@@ -903,7 +909,11 @@ class _TrustSafetyReportState extends State<_TrustSafetyReport> {
     if (confirmed != true) return;
 
     try {
-      await AdminService.instance.setBanned(row['owner_id'].toString(), true);
+      await AdminService.instance.setBanned(
+        row['owner_id'].toString(),
+        true,
+        reason: 'Policy violation notice',
+      );
       _apply();
     } catch (_) {
       if (!mounted) return;
@@ -1156,8 +1166,8 @@ class _PetOwnershipReportState extends State<_PetOwnershipReport> {
                 children: [
                   Text(
                     'Min Pets: ${_minPets.round()}',
-                    style: const TextStyle(
-                        fontSize: 12, color: AdminColors.muted),
+                    style:
+                        const TextStyle(fontSize: 12, color: AdminColors.muted),
                   ),
                   Slider(
                     min: 0,
@@ -1181,9 +1191,8 @@ class _PetOwnershipReportState extends State<_PetOwnershipReport> {
             final distribution =
                 (data['distribution'] as List<dynamic>? ?? const [])
                     .cast<Map<String, dynamic>>();
-            final topOwners =
-                (data['topOwners'] as List<dynamic>? ?? const [])
-                    .cast<Map<String, dynamic>>();
+            final topOwners = (data['topOwners'] as List<dynamic>? ?? const [])
+                .cast<Map<String, dynamic>>();
 
             final totalPetOwners = _toInt(summary['totalPetOwners']);
             final ownersWithNoPets = _toInt(summary['ownersWithNoPets']);
@@ -1212,7 +1221,8 @@ class _PetOwnershipReportState extends State<_PetOwnershipReport> {
             final distValues = <double>[];
             for (final row in distribution) {
               final count = _toInt(row['pet_count']);
-              distLabels.add(count >= 5 ? '5+' : '$count pet${count == 1 ? '' : 's'}');
+              distLabels.add(
+                  count >= 5 ? '5+' : '$count pet${count == 1 ? '' : 's'}');
               distValues.add(_toDouble(row['owner_count']));
             }
 
@@ -1230,8 +1240,8 @@ class _PetOwnershipReportState extends State<_PetOwnershipReport> {
                   child: _BarChart(
                     labels: distLabels,
                     values: distValues,
-                    colors:
-                        List<Color>.filled(distLabels.length, AdminColors.orange),
+                    colors: List<Color>.filled(
+                        distLabels.length, AdminColors.orange),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -1335,7 +1345,8 @@ class _PetActivityReportState extends State<_PetActivityReport> {
 
             final totalPets = _toInt(summary['totalPets']);
             final totalBookings = _toInt(summary['totalBookings']);
-            final mostPopular = summary['mostPopularSpecies']?.toString() ?? 'N/A';
+            final mostPopular =
+                summary['mostPopularSpecies']?.toString() ?? 'N/A';
             final avgBookings = _toDouble(summary['avgBookingsPerPet']);
 
             final tableColumns = [
@@ -1376,7 +1387,8 @@ class _PetActivityReportState extends State<_PetActivityReport> {
                             sectionsSpace: 2,
                             sections: bySpecies.map((row) {
                               final species =
-                                  row['species']?.toString().toLowerCase() ?? '';
+                                  row['species']?.toString().toLowerCase() ??
+                                      '';
                               return PieChartSectionData(
                                 value: _toDouble(row['pet_count']),
                                 title: _title(species),
@@ -1399,8 +1411,7 @@ class _PetActivityReportState extends State<_PetActivityReport> {
                     reportTitle: 'Pet Activity Report',
                     columns: tableColumns,
                     rows: exportRows,
-                    appliedFilters:
-                        'Species: ${_speciesLabel(_species)}',
+                    appliedFilters: 'Species: ${_speciesLabel(_species)}',
                     summaryData: {
                       'Total Pets': totalPets,
                       'Total Bookings': totalBookings,
@@ -2248,8 +2259,7 @@ String _rangeLabel(DateTime? start, DateTime? end) {
   return '${_apiDate(start) ?? 'Any'} to ${_apiDate(end) ?? 'Any'}';
 }
 
-bool _validateDateRange(
-    BuildContext context, DateTime? start, DateTime? end) {
+bool _validateDateRange(BuildContext context, DateTime? start, DateTime? end) {
   final now = DateTime.now();
   if (start != null && start.isAfter(now)) {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(

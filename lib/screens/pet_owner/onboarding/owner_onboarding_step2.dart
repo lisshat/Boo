@@ -2,6 +2,7 @@ import 'package:boo/services/cloudinary_upload_service.dart';
 import 'package:flutter/material.dart';
 import 'owner_onboarding_step1.dart';
 import 'owner_onboarding_step3.dart';
+import 'onboarding_scroll_view.dart';
 
 class OwnerOnboardingStep2 extends StatefulWidget {
   final String petName;
@@ -84,8 +85,7 @@ class _OwnerOnboardingStep2State extends State<OwnerOnboardingStep2> {
     return Scaffold(
       backgroundColor: _bg,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: OnboardingScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -96,12 +96,14 @@ class _OwnerOnboardingStep2State extends State<OwnerOnboardingStep2> {
               const SizedBox(height: 32),
               Text(
                 '${widget.petName} deserves the best care 🐾',
-                style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+                style:
+                    const TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
               Text(
                 'Tell us about ${widget.petName} so we can match you with the right providers.',
-                style: const TextStyle(fontSize: 14, color: Colors.black54, height: 1.5),
+                style: const TextStyle(
+                    fontSize: 14, color: Colors.black54, height: 1.5),
               ),
               const SizedBox(height: 28),
               _PhotoPicker(
@@ -110,14 +112,16 @@ class _OwnerOnboardingStep2State extends State<OwnerOnboardingStep2> {
                 onTap: _pickAndUploadPhoto,
               ),
               const SizedBox(height: 28),
-              const Text('Type', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+              const Text('Type',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
               const SizedBox(height: 10),
               _PetTypeChips(
                 selected: _selectedType,
                 onSelect: (type) => setState(() => _selectedType = type),
               ),
               const SizedBox(height: 24),
-              const Text('Name', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+              const Text('Name',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
               const SizedBox(height: 10),
               TextField(
                 controller: _nameController,
@@ -127,7 +131,8 @@ class _OwnerOnboardingStep2State extends State<OwnerOnboardingStep2> {
                   hintStyle: const TextStyle(color: Colors.black38),
                   filled: true,
                   fillColor: Colors.white,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide.none,
@@ -184,7 +189,8 @@ class _OnboardingTopBar extends StatelessWidget {
           child: const Icon(Icons.arrow_back_ios_new, size: 18),
         ),
         const SizedBox(width: 12),
-        const Text('Boo', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        const Text('Boo',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
       ],
     );
   }
@@ -230,10 +236,13 @@ class _PhotoPicker extends StatelessWidget {
                           ? Image.network(
                               photoUrl!,
                               fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) =>
-                                  const Icon(Icons.pets, size: 40, color: Colors.black26),
+                              errorBuilder: (_, __, ___) => const Icon(
+                                  Icons.pets,
+                                  size: 40,
+                                  color: Colors.black26),
                             )
-                          : const Icon(Icons.pets, size: 40, color: Colors.black26),
+                          : const Icon(Icons.pets,
+                              size: 40, color: Colors.black26),
                 ),
                 Positioned(
                   bottom: 0,
@@ -245,7 +254,8 @@ class _PhotoPicker extends StatelessWidget {
                       color: Color(0xFFF68B1F),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.camera_alt, size: 15, color: Colors.white),
+                    child: const Icon(Icons.camera_alt,
+                        size: 15, color: Colors.white),
                   ),
                 ),
               ],
@@ -287,7 +297,8 @@ class _PetTypeChips extends StatelessWidget {
               color: isSelected ? const Color(0xFFF68B1F) : Colors.white,
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
-                color: isSelected ? const Color(0xFFF68B1F) : Colors.grey.shade300,
+                color:
+                    isSelected ? const Color(0xFFF68B1F) : Colors.grey.shade300,
               ),
             ),
             child: Text(

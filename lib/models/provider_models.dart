@@ -39,6 +39,7 @@ class ProviderModel {
   final String verificationStatus;
   final double? latitude;
   final double? longitude;
+  final double? distanceKm;
   final List<ServiceModel> services;
   final List<ReviewModel> reviews;
 
@@ -60,6 +61,7 @@ class ProviderModel {
     required this.reviews,
     this.latitude,
     this.longitude,
+    this.distanceKm,
   });
 
   double _getBoost(String status) {
@@ -99,9 +101,11 @@ class ProviderModel {
       locationName: json['location'] as String? ?? 'Nairobi',
       addressLine: '',
       isVerified: json['isVerified'] as bool? ?? false,
-      verificationStatus: json['verificationStatus'] as String? ?? 'unsubmitted',
+      verificationStatus:
+          json['verificationStatus'] as String? ?? 'unsubmitted',
       latitude: double.tryParse(json['latitude']?.toString() ?? ''),
       longitude: double.tryParse(json['longitude']?.toString() ?? ''),
+      distanceKm: double.tryParse(json['distanceKm']?.toString() ?? ''),
       services: services,
       reviews: const [],
     );
@@ -277,6 +281,7 @@ enum BookingStatus {
 
 class BookingRecord {
   final String id;
+  final String providerId;
   final String providerName;
   final String providerImageUrl;
   final String serviceName;
@@ -297,6 +302,7 @@ class BookingRecord {
 
   const BookingRecord({
     required this.id,
+    required this.providerId,
     required this.providerName,
     required this.providerImageUrl,
     required this.serviceName,
@@ -334,6 +340,7 @@ class BookingRecord {
     );
     return BookingRecord(
       id: (json['bookingId'] ?? json['booking_id'] ?? json['id']).toString(),
+      providerId: (json['providerId'] ?? json['provider_id']).toString(),
       providerName: (provider['businessName'] as String?) ??
           (provider['business_name'] as String?) ??
           'Unknown provider',
@@ -426,6 +433,12 @@ class ProviderBookingRecord {
   final DateTime bookingDatetime;
   final ProviderBookingStatus status;
   final String? rescheduledFrom;
+  final String paymentStatus;
+  final String? paymentMethod;
+  final DateTime? paidAt;
+  final DateTime? providerRecordedAt;
+  final String currency;
+  final String snapshotSource;
 
   const ProviderBookingRecord({
     required this.id,
@@ -443,6 +456,12 @@ class ProviderBookingRecord {
     required this.bookingDatetime,
     required this.status,
     this.rescheduledFrom,
+    this.paymentStatus = 'not_recorded',
+    this.paymentMethod,
+    this.paidAt,
+    this.providerRecordedAt,
+    this.currency = 'KES',
+    this.snapshotSource = 'booking_time',
   });
 
   bool get isRescheduledBooking => rescheduledFrom != null;
@@ -451,26 +470,34 @@ class ProviderBookingRecord {
     final dt = DateTime.parse(json['bookingDatetime'] as String).toLocal();
     final service = json['service'] as Map<String, dynamic>? ?? {};
     final owner = json['owner'] as Map<String, dynamic>? ?? {};
-    final price = double.tryParse(service['price']?.toString() ?? '0') ?? 0;
-    final duration = (service['durationMinutes'] as int?) ??
+    final servicePrice =
+        double.tryParse(service['price']?.toString() ?? '0') ?? 0;
+    final serviceDuration = (service['durationMinutes'] as int?) ??
         (service['duration_minutes'] as int?) ??
         0;
     final rawPricingUnit =
         (service['pricingUnit'] ?? service['pricing_unit'])?.toString();
-    final amount = bookingTotalAmount(
-      price: price,
-      pricingUnit: rawPricingUnit,
-      durationMinutes: duration,
-    );
+    final snapshotAmount =
+        double.tryParse(json['agreedAmount']?.toString() ?? '') ??
+            bookingTotalAmount(
+              price: servicePrice,
+              pricingUnit: rawPricingUnit,
+              durationMinutes: serviceDuration,
+            );
+    final duration =
+        (json['durationMinutesSnapshot'] as num?)?.toInt() ?? serviceDuration;
+    final pricingUnit =
+        (json['pricingUnitSnapshot'] ?? rawPricingUnit)?.toString() ??
+            'per_session';
     return ProviderBookingRecord(
       id: json['bookingId'] as String,
       ownerId: json['ownerId'] as String? ?? '',
       ownerName: (owner['fullName'] as String?) ?? 'Pet owner',
       serviceName: (service['serviceName'] as String?) ?? 'Service',
-      priceLabel: _formatPrice(amount),
-      amount: amount,
-      basePrice: price,
-      pricingUnit: pricingUnitLabel(rawPricingUnit),
+      priceLabel: _formatPrice(snapshotAmount),
+      amount: snapshotAmount,
+      basePrice: snapshotAmount,
+      pricingUnit: pricingUnitLabel(pricingUnit),
       durationMinutes: duration,
       category: service['category']?.toString() ?? '',
       date: DateTime(dt.year, dt.month, dt.day),
@@ -478,6 +505,13 @@ class ProviderBookingRecord {
       bookingDatetime: dt,
       status: _parseStatus(json['status'] as String),
       rescheduledFrom: json['rescheduledFrom'] as String?,
+      paymentStatus: json['paymentStatus']?.toString() ?? 'not_recorded',
+      paymentMethod: json['paymentMethod']?.toString(),
+      paidAt: DateTime.tryParse(json['paidAt']?.toString() ?? ''),
+      providerRecordedAt:
+          DateTime.tryParse(json['providerRecordedAt']?.toString() ?? ''),
+      currency: json['currency']?.toString() ?? 'KES',
+      snapshotSource: json['snapshotSource']?.toString() ?? 'legacy_service',
     );
   }
 

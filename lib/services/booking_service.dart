@@ -28,6 +28,19 @@ class BookingService {
         return jsonDecode(res.body) as Map<String, dynamic>;
       }
       if (res.statusCode == 403) {
+        try {
+          final decoded = jsonDecode(res.body);
+          if (decoded is Map<String, dynamic> &&
+              decoded['code'] == 'EMAIL_VERIFICATION_REQUIRED') {
+            throw BookingException(
+              (decoded['message'] as String?) ??
+                  'Confirm your email to continue.',
+              code: 'EMAIL_VERIFICATION_REQUIRED',
+            );
+          }
+        } catch (error) {
+          if (error is BookingException) rethrow;
+        }
         throw BookingException(
             'Your account isn\'t set up to make bookings yet. Try logging out and back in.');
       }
@@ -50,16 +63,25 @@ class BookingService {
     }
   }
 
-  Future<Map<String, dynamic>> getProviderEarnings() async {
+  Future<Map<String, dynamic>> getProviderEarnings({
+    bool allowFallback = true,
+  }) async {
     final local = await _providerEarningsFromBookings();
     try {
       final res = await ApiService.instance.get('/bookings/provider/earnings');
       if (res.statusCode == 200) {
-        final remote = jsonDecode(res.body) as Map<String, dynamic>;
-        return local.isEmpty ? remote : {...remote, ...local};
+        return jsonDecode(res.body) as Map<String, dynamic>;
+      }
+      if (!allowFallback) {
+        throw BookingException(
+            'Could not refresh service payments. Pull down to reload.');
       }
       return local;
     } catch (_) {
+      if (!allowFallback) {
+        throw BookingException(
+            'Could not refresh service payments. Pull down to reload.');
+      }
       return local;
     }
   }
@@ -159,10 +181,66 @@ class BookingService {
     return res.statusCode == 200;
   }
 
-  Future<bool> completeBooking(String bookingId) async {
-    final res =
-        await ApiService.instance.patch('/bookings/$bookingId/complete', {});
-    return res.statusCode == 200;
+  Future<Map<String, dynamic>> recordPayment(
+    String bookingId, {
+    required bool received,
+    String? paymentMethod,
+  }) async {
+    final body = <String, dynamic>{'received': received};
+    if (paymentMethod != null) body['paymentMethod'] = paymentMethod;
+    final res = await ApiService.instance.patch(
+      '/bookings/$bookingId/payment-record',
+      body,
+    );
+    if (res.statusCode == 200) {
+      return jsonDecode(res.body) as Map<String, dynamic>;
+    }
+    try {
+      final decoded = jsonDecode(res.body);
+      final message =
+          decoded is Map<String, dynamic> ? decoded['message'] : null;
+      if (message is String && message.trim().isNotEmpty) {
+        throw BookingException(message.trim());
+      }
+    } catch (error) {
+      if (error is BookingException) rethrow;
+    }
+    throw BookingException(
+        'Could not update the payment record. Please try again.');
+  }
+
+  Future<void> completeBooking(String bookingId) async {
+    try {
+      final res =
+          await ApiService.instance.patch('/bookings/$bookingId/complete', {});
+      if (res.statusCode == 200) return;
+      if (res.statusCode == 400 ||
+          res.statusCode == 403 ||
+          res.statusCode == 404 ||
+          res.statusCode == 409) {
+        try {
+          final body = jsonDecode(res.body);
+          final message = body is Map<String, dynamic> ? body['message'] : null;
+          if (message is String && message.trim().isNotEmpty) {
+            throw BookingException(message.trim());
+          }
+        } catch (error) {
+          if (error is BookingException) rethrow;
+        }
+        throw BookingException('This booking cannot be completed yet.');
+      }
+      if (res.statusCode >= 500) {
+        throw BookingException(
+            'Our servers are having a moment. Please try again shortly.');
+      }
+      throw BookingException(
+          'Could not complete this booking. Please try again.');
+    } on BookingException {
+      rethrow;
+    } catch (_) {
+      throw BookingException(
+          'Could not reach the server. Check your connection and try again.');
+    }
   }
 
   Future<bool> declineBooking(String bookingId, {String? reason}) async {
@@ -208,7 +286,12 @@ class BookingService {
     if (bookings.isEmpty) return {};
     final completed =
         bookings.where((b) => b.status == ProviderBookingStatus.completed);
-    final total = completed.fold<double>(0, (sum, b) => sum + b.amount);
+    final recorded = completed.where(
+      (b) => b.paymentStatus == 'provider_recorded_received',
+    );
+    final total = recorded.fold<double>(0, (sum, b) => sum + b.amount);
+    final completedServiceValue =
+        completed.fold<double>(0, (sum, b) => sum + b.amount);
     final pendingCount = bookings
         .where((b) =>
             b.status == ProviderBookingStatus.pending ||
@@ -220,14 +303,22 @@ class BookingService {
         'completedCount': completed.length,
         'pendingCount': pendingCount,
       },
-      'byMonth': _amountsByMonth(completed.map((b) => (b.date, b.amount))),
+      'completedServiceValue': completedServiceValue,
+      'completedUnrecordedCount': completed.length - recorded.length,
+      'byMonth': _amountsByMonth(recorded.map((b) => (b.date, b.amount))),
       'byCategory': _amountsByCategory(
-        completed.map((b) => (b.category, b.amount)),
+        recorded.map((b) => (b.category, b.amount)),
       ),
       'recentBookings': bookings.take(20).map((b) {
         return {
+          'id': b.id,
           'price': b.amount,
+          'amount': b.amount,
           'status': _providerStatusValue(b.status),
+          'paymentStatus': b.paymentStatus,
+          'paymentMethod': b.paymentMethod,
+          'currency': b.currency,
+          'snapshotSource': b.snapshotSource,
           'date': b.bookingDatetime.toIso8601String(),
           'service': b.serviceName,
           'owner': b.ownerName,
@@ -342,7 +433,8 @@ class BookingService {
 
 class BookingException implements Exception {
   final String message;
-  const BookingException(this.message);
+  final String? code;
+  const BookingException(this.message, {this.code});
 
   @override
   String toString() => message;

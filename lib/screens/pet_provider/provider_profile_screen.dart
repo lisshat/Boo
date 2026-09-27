@@ -1,13 +1,21 @@
+import 'dart:convert';
+
 import 'package:boo/screens/pet_owner/book_appointment_screen.dart';
 import 'package:boo/screens/pet_owner/chat_page.dart';
+import 'package:boo/screens/pet_owner/leave_review_screen.dart';
 import 'package:boo/services/auth_service.dart';
+import 'package:boo/services/email_verification_coordinator.dart';
 import 'package:boo/services/favorites_service.dart';
 import 'package:boo/services/reviews_service.dart';
+import 'package:boo/services/booking_service.dart';
 import 'package:boo/services/stream_chat_service.dart';
+import 'package:boo/services/report_service.dart';
+import 'package:boo/widgets/report_form_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../models/provider_models.dart';
+import '../../models/navigation_intent.dart';
 
 class ProviderProfileScreen extends StatefulWidget {
   final ProviderModel provider;
@@ -27,6 +35,7 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
 
   late bool _isFav;
   List<ReviewModel> _reviews = [];
+  BookingRecord? _reviewOpportunity;
   bool _openingChat = false;
 
   @override
@@ -34,12 +43,48 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
     super.initState();
     _isFav = FavoritesManager.instance.isFav(widget.provider.id);
     _loadReviews();
+    _loadReviewOpportunity();
   }
 
   Future<void> _loadReviews() async {
     final reviews =
         await ReviewsService.instance.getProviderReviews(widget.provider.id);
     if (mounted) setState(() => _reviews = reviews);
+  }
+
+  Future<void> _loadReviewOpportunity() async {
+    if (await AuthService.instance.getUserRole() != 'owner') return;
+    final bookings = await BookingService.instance.getBookings();
+    final eligible = bookings
+        .where((booking) =>
+            booking.providerId == widget.provider.id &&
+            booking.status == BookingStatus.completed &&
+            !booking.hasReview)
+        .toList()
+      ..sort((a, b) => b.bookingDatetime.compareTo(a.bookingDatetime));
+    if (mounted) {
+      setState(
+          () => _reviewOpportunity = eligible.isEmpty ? null : eligible.first);
+    }
+  }
+
+  Future<void> _leaveProfileReview() async {
+    final booking = _reviewOpportunity;
+    if (booking == null) return;
+    final intent = ReviewBookingIntent(bookingId: booking.id);
+    final submitted = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LeaveReviewScreen(
+          bookingId: intent.bookingId,
+          providerName: booking.providerName,
+          serviceName: booking.serviceName,
+        ),
+      ),
+    );
+    if (mounted) {
+      await Future.wait([_loadReviews(), _loadReviewOpportunity()]);
+    }
   }
 
   double get _liveRating => _reviews.isEmpty
@@ -79,20 +124,36 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
     SharePlus.instance.share(ShareParams(text: text));
   }
 
-  Future<void> _messageProvider() async {
-    if (_openingChat) return;
-    final providerUserId = widget.provider.userId;
-    if (providerUserId.isEmpty) {
+  Future<void> _reportProvider() async {
+    final submitted = await showReportForm(
+      context,
+      title: 'Report provider',
+      onSubmit: (reason, description) => ReportService.instance.submit(
+        providerProfileId: widget.provider.id,
+        reason: reason,
+        description: description,
+      ),
+    );
+    if (submitted == true && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Messaging is unavailable for this provider.'),
-          backgroundColor: Colors.red,
-        ),
+            content: Text('Report received. Boo’s team will review it.')),
       );
+    }
+  }
+
+  Future<void> _messageProvider({bool allowVerificationRetry = true}) async {
+    if (_openingChat) return;
+
+    if (!await EmailVerificationCoordinator.ensureConfirmed(
+      context,
+      actionLabel: 'Message provider',
+    )) {
       return;
     }
 
     setState(() => _openingChat = true);
+    var retryAfterVerification = false;
     try {
       final streamService = BooStreamChatService.instance;
       final connected = await streamService.connectFromStoredSession();
@@ -101,34 +162,39 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
         throw Exception('Chat is unavailable. Please log in again.');
       }
 
-      if (currentUserId == providerUserId) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text("You can't message your own provider profile."),
-              backgroundColor: Colors.red,
-            ),
-          );
+      final response = await ApiService.instance
+          .post('/providers/${widget.provider.id}/init-chat', {});
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        if (response.statusCode == 403) {
+          try {
+            final body = jsonDecode(response.body);
+            if (body is Map<String, dynamic> &&
+                body['code'] == 'EMAIL_VERIFICATION_REQUIRED') {
+              retryAfterVerification = allowVerificationRetry;
+              return;
+            }
+          } catch (_) {}
         }
-        return;
+        throw Exception(
+            'Unable to authorize this conversation. Please try again.');
       }
-
-      // Ensure the provider's Stream user exists before creating the channel.
-      try {
-        await ApiService.instance
-            .post('/providers/${widget.provider.id}/init-chat', {});
-      } catch (_) {}
-
-      final channel = await streamService.directMessagingChannel(
-        otherUserId: providerUserId,
-        extraData: {
-          'name': widget.provider.name,
-          'provider_id': widget.provider.id,
-          'provider_is_verified': widget.provider.isVerified,
-          'provider_verification_status': widget.provider.isVerified
-              ? 'verified'
-              : 'unverified',
-        },
+      final body = jsonDecode(response.body);
+      if (body is! Map<String, dynamic>) {
+        throw Exception('The chat authorization response was invalid.');
+      }
+      final channelId = body['channelId'];
+      final channelType = body['channelType'];
+      if (channelId is! String || channelId.trim().isEmpty) {
+        throw Exception(
+            'The chat authorization response was missing a channel.');
+      }
+      if (channelType != null &&
+          (channelType is! String || channelType.trim().isEmpty)) {
+        throw Exception('The chat authorization response was invalid.');
+      }
+      final channel = await streamService.openAuthorizedChannel(
+        channelId: channelId,
+        channelType: channelType is String ? channelType : 'messaging',
       );
 
       if (!mounted) return;
@@ -148,6 +214,14 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
       );
     } finally {
       if (mounted) setState(() => _openingChat = false);
+      if (retryAfterVerification &&
+          mounted &&
+          await EmailVerificationCoordinator.ensureConfirmed(
+            context,
+            actionLabel: 'Message provider',
+          )) {
+        await _messageProvider(allowVerificationRetry: false);
+      }
     }
   }
 
@@ -247,6 +321,18 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
             onPressed: _share,
             icon: const Icon(Icons.ios_share_rounded),
           ),
+          PopupMenuButton<String>(
+            tooltip: 'Provider safety actions',
+            onSelected: (value) {
+              if (value == 'report') _reportProvider();
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem<String>(
+                value: 'report',
+                child: Text('Report provider'),
+              ),
+            ],
+          ),
         ],
       ),
       body: SafeArea(
@@ -258,6 +344,10 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
               liveRating: _liveRating,
               liveReviewCount: _liveReviewCount,
             ),
+            if (_reviewOpportunity != null) ...[
+              const SizedBox(height: 10),
+              _reviewOpportunityCard(_reviewOpportunity!),
+            ],
             if (!widget.provider.isVerified) ...[
               const SizedBox(height: 10),
               const _UnverifiedProviderWarning(),
@@ -267,12 +357,15 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
               onPressed: _openingChat ? null : _messageProvider,
               icon: _openingChat
                   ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: booOrange,
+                      ),
                     )
                   : const Icon(Icons.chat_bubble_outline_rounded),
-              label: const Text('Message provider'),
+              label: Text(_openingChat ? 'Opening chat…' : 'Message provider'),
               style: OutlinedButton.styleFrom(
                 foregroundColor: booOrange,
                 side: const BorderSide(color: booOrange),
@@ -394,6 +487,45 @@ class _ProviderProfileScreenState extends State<ProviderProfileScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _reviewOpportunityCard(BookingRecord booking) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF5EA),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFF3D8BE)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.rate_review_outlined, color: booOrange),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('How was your visit?',
+                    style: TextStyle(fontWeight: FontWeight.w800)),
+                const SizedBox(height: 3),
+                Text(
+                  '${booking.serviceName} • ${booking.date.day}/${booking.date.month}/${booking.date.year}',
+                  style: const TextStyle(fontSize: 12, color: Colors.black54),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          TextButton(
+            onPressed: _leaveProfileReview,
+            style: TextButton.styleFrom(foregroundColor: booOrange),
+            child: const Text('Leave a review'),
+          ),
+        ],
       ),
     );
   }
@@ -594,7 +726,7 @@ class _UnverifiedProviderWarning extends StatelessWidget {
         border: Border.all(color: const Color(0xFFF59E0B)),
       ),
       child: const Text(
-        'Identity Not Verified\nThis provider has not completed our security check. For your pet\'s safety, request a video call and meet in a public park before booking.',
+        'Identity Not Verified\nThis provider has not completed our security check. For your safety, meet in a public place before booking and keep important coordination in this chat.',
         style: TextStyle(
           fontSize: 12,
           height: 1.35,
@@ -899,11 +1031,14 @@ class _AllReviewsScreenState extends State<_AllReviewsScreen> {
                 ),
                 ...List.generate(5, (i) {
                   final star = 5 - i;
-                  final count = widget.reviews.where((r) => r.rating == star).length;
+                  final count =
+                      widget.reviews.where((r) => r.rating == star).length;
                   return _RatingChip(
                     label: '${'★' * star}  ($count)',
                     selected: _filterRating == star,
-                    onTap: count > 0 ? () => setState(() => _filterRating = star) : null,
+                    onTap: count > 0
+                        ? () => setState(() => _filterRating = star)
+                        : null,
                   );
                 }),
               ],
@@ -952,7 +1087,11 @@ class _RatingChip extends StatelessWidget {
           duration: const Duration(milliseconds: 150),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           decoration: BoxDecoration(
-            color: selected ? _orange : disabled ? const Color(0xFFF3F4F6) : Colors.white,
+            color: selected
+                ? _orange
+                : disabled
+                    ? const Color(0xFFF3F4F6)
+                    : Colors.white,
             borderRadius: BorderRadius.circular(999),
             border: Border.all(
               color: selected ? _orange : const Color(0xFFE5E7EB),
@@ -963,7 +1102,11 @@ class _RatingChip extends StatelessWidget {
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w700,
-              color: selected ? Colors.white : disabled ? const Color(0xFFBDBDBD) : Colors.black87,
+              color: selected
+                  ? Colors.white
+                  : disabled
+                      ? const Color(0xFFBDBDBD)
+                      : Colors.black87,
             ),
           ),
         ),
@@ -1005,8 +1148,13 @@ class _ReviewTile extends StatelessWidget {
                 radius: 18,
                 backgroundColor: _orange.withValues(alpha: 0.12),
                 child: Text(
-                  review.ownerName.isNotEmpty ? review.ownerName[0].toUpperCase() : '?',
-                  style: const TextStyle(color: _orange, fontWeight: FontWeight.bold, fontSize: 14),
+                  review.ownerName.isNotEmpty
+                      ? review.ownerName[0].toUpperCase()
+                      : '?',
+                  style: const TextStyle(
+                      color: _orange,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14),
                 ),
               ),
               const SizedBox(width: 10),
@@ -1015,18 +1163,24 @@ class _ReviewTile extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(review.ownerName,
-                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w700, fontSize: 14)),
                     Row(
                       children: [
-                        ...List.generate(5, (i) => Icon(
-                          i < review.rating ? Icons.star_rounded : Icons.star_outline_rounded,
-                          size: 14,
-                          color: Colors.amber,
-                        )),
+                        ...List.generate(
+                            5,
+                            (i) => Icon(
+                                  i < review.rating
+                                      ? Icons.star_rounded
+                                      : Icons.star_outline_rounded,
+                                  size: 14,
+                                  color: Colors.amber,
+                                )),
                         const SizedBox(width: 6),
                         Text(
                           _timeAgo(review.createdAt),
-                          style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)),
+                          style: const TextStyle(
+                              fontSize: 11, color: Color(0xFF9CA3AF)),
                         ),
                       ],
                     ),
@@ -1039,7 +1193,8 @@ class _ReviewTile extends StatelessWidget {
             const SizedBox(height: 10),
             Text(
               review.text!,
-              style: const TextStyle(fontSize: 14, color: Color(0xFF4B5563), height: 1.45),
+              style: const TextStyle(
+                  fontSize: 14, color: Color(0xFF4B5563), height: 1.45),
             ),
           ],
           if (review.providerReply != null) ...[
@@ -1055,10 +1210,14 @@ class _ReviewTile extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text('Provider replied',
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF9CA3AF))),
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF9CA3AF))),
                   const SizedBox(height: 4),
                   Text(review.providerReply!,
-                      style: const TextStyle(fontSize: 13, color: Color(0xFF374151), height: 1.4)),
+                      style: const TextStyle(
+                          fontSize: 13, color: Color(0xFF374151), height: 1.4)),
                 ],
               ),
             ),

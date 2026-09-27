@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:boo/screens/pet_owner/favorite_providers_screen.dart';
@@ -6,7 +7,14 @@ import 'package:boo/screens/pet_owner/pet_profile_page.dart';
 import 'package:boo/screens/pet_provider/onboarding/provider_onboarding_step1.dart';
 import 'package:boo/services/auth_service.dart';
 import 'package:boo/services/cloudinary_upload_service.dart';
+import 'package:boo/screens/auth/email_confirmation_screen.dart';
+import 'package:boo/screens/premium_plan_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
+import 'package:boo/widgets/notification_settings_section.dart';
+import 'package:boo/widgets/premium_feature_gate.dart';
+import 'package:boo/services/premium_access_service.dart';
+import 'package:boo/services/revenuecat_service.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -22,6 +30,7 @@ class _ProfilePageState extends State<ProfilePage> {
   late Future<Map<String, dynamic>> _ownerProfileFuture;
   late Future<List<dynamic>> _petsFuture;
   bool _uploadingProfilePhoto = false;
+  bool _checkingPetAccess = false;
 
   @override
   void initState() {
@@ -261,8 +270,66 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   // ── Add pet sheet ───────────────────────────────────────────────
-  void _showAddPetSheet() {
-    showModalBottomSheet(
+  Future<void> _showAddPetSheet() async {
+    if (_checkingPetAccess) return;
+    setState(() => _checkingPetAccess = true);
+    try {
+      final pets = await _fetchPets();
+      if (!mounted) return;
+      _petsFuture = Future.value(pets);
+      if (pets.isNotEmpty) {
+        final decision =
+            PremiumAccessController.instance.evaluatePetCreation(pets.length);
+        if (!decision.allowed) {
+          await _showPetUpgrade();
+          if (!mounted) return;
+          final refreshedDecision = PremiumAccessController.instance
+              .evaluatePetCreation(pets.length);
+          if (refreshedDecision.allowed) await _openAddPetSheet();
+          return;
+        }
+      }
+      await _openAddPetSheet();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not check your pet profiles.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _checkingPetAccess = false);
+    }
+  }
+
+  Future<void> _showPetUpgrade() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: PremiumFeatureGate(
+          feature: PremiumFeature.additionalPetProfiles,
+          featureReady: true,
+          child: Builder(
+            builder: (context) => Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Boo Plus is active for additional pet profiles.'),
+                const SizedBox(height: 12),
+                FilledButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Continue to Add Pet'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openAddPetSheet() async {
+    await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
@@ -505,7 +572,7 @@ class _ProfilePageState extends State<ProfilePage> {
                           TextStyle(fontSize: 15, fontWeight: FontWeight.w900)),
                 ),
                 TextButton.icon(
-                  onPressed: _showAddPetSheet,
+                  onPressed: _checkingPetAccess ? null : _showAddPetSheet,
                   icon: const Icon(Icons.add, size: 16, color: orange),
                   label: const Text('Add pet',
                       style: TextStyle(
@@ -665,6 +732,16 @@ class _ProfilePageState extends State<ProfilePage> {
                 final location = snap.data?['location'] as String?;
                 return _SettingsGroup(items: [
                   _SettingsItem(
+                    icon: Icons.workspace_premium_outlined,
+                    label: 'Boo Plus',
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => PremiumPlanScreen.forRole('owner'),
+                      ),
+                    ),
+                  ),
+                  _SettingsItem(
                     icon: Icons.account_balance_wallet_outlined,
                     label: 'My Spending',
                     onTap: () => Navigator.push(
@@ -699,8 +776,23 @@ class _ProfilePageState extends State<ProfilePage> {
                     label: 'Privacy & Security',
                     onTap: _showPrivacyDialog,
                   ),
+                  _SettingsItem(
+                    icon: Icons.mark_email_read_outlined,
+                    label: 'Email confirmation',
+                    onTap: () => EmailConfirmationScreen.show(context),
+                  ),
                 ]);
               },
+            ),
+
+            const SizedBox(height: 12),
+            const NotificationSettingsSection(),
+
+            const SizedBox(height: 12),
+            const PremiumFeatureGate(
+              feature: PremiumFeature.petHealthTimeline,
+              featureReady: false,
+              child: SizedBox.shrink(),
             ),
 
             const SizedBox(height: 12),
@@ -727,7 +819,10 @@ class _ProfilePageState extends State<ProfilePage> {
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: const Color(0xFFEAECEF)),
               ),
-              child: ListTile(
+              child: Material(
+                color: Colors.transparent,
+                borderRadius: BorderRadius.circular(16),
+                child: ListTile(
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16)),
                 leading: Container(
@@ -753,6 +848,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
               ),
             ),
+            ),
 
             const SizedBox(height: 12),
 
@@ -763,7 +859,10 @@ class _ProfilePageState extends State<ProfilePage> {
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: const Color(0xFFEAECEF)),
               ),
-              child: ListTile(
+              child: Material(
+                color: Colors.transparent,
+                borderRadius: BorderRadius.circular(16),
+                child: ListTile(
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16)),
                 leading: Container(
@@ -785,6 +884,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   Navigator.of(context)
                       .pushNamedAndRemoveUntil('/login', (_) => false);
                 },
+              ),
               ),
             ),
           ],
@@ -900,6 +1000,7 @@ class _InitialsAvatar extends StatelessWidget {
 
 class _AddPetSheet extends StatefulWidget {
   final VoidCallback onAdded;
+
   const _AddPetSheet({required this.onAdded});
 
   @override
@@ -915,6 +1016,8 @@ class _AddPetSheetState extends State<_AddPetSheet> {
   String _selectedSpecies = 'Dog';
   int _age = 1;
   bool _saving = false;
+  bool _backendProjectionRetryUsed = false;
+  String? _nameError;
 
   @override
   void dispose() {
@@ -924,14 +1027,19 @@ class _AddPetSheetState extends State<_AddPetSheet> {
   }
 
   Future<void> _submit() async {
+    if (_saving) return;
+    _debugSubmission('pet_submit_started');
     final name = _nameCtrl.text.trim();
     if (name.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a pet name')),
-      );
+      setState(() => _nameError = 'Enter your pet\'s name.');
+      _debugSubmission('pet_validation_failed');
       return;
     }
-    setState(() => _saving = true);
+    setState(() {
+      _nameError = null;
+      _saving = true;
+    });
+    try {
     final body = <String, dynamic>{
       'name': name,
       'species': _selectedSpecies,
@@ -939,18 +1047,70 @@ class _AddPetSheetState extends State<_AddPetSheet> {
     };
     if (_breedCtrl.text.isNotEmpty) body['breed'] = _breedCtrl.text.trim();
 
-    final res = await ApiService.instance.post('/pets', body);
+    _debugSubmission('pet_request_started');
+    var res = await ApiService.instance
+        .post('/pets', body)
+        .timeout(const Duration(seconds: 15));
+    if (res.statusCode == 403 &&
+        !_backendProjectionRetryUsed &&
+        RevenueCatService.instance.state.kind == MembershipKind.booPlus) {
+      _backendProjectionRetryUsed = true;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Activating your membership…')),
+        );
+      }
+      await Future<void>.delayed(const Duration(seconds: 1));
+      if (!mounted) return;
+      _debugSubmission('pet_request_started');
+      res = await ApiService.instance
+          .post('/pets', body)
+          .timeout(const Duration(seconds: 15));
+    }
     if (!mounted) return;
     if (res.statusCode == 201) {
+      _debugSubmission('pet_create_succeeded');
       Navigator.pop(context);
       widget.onAdded();
+    } else if (res.statusCode == 403) {
+      _debugSubmission('pet_create_rejected');
+      await RevenueCatService.instance.refreshFresh();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            RevenueCatService.instance.state.kind == MembershipKind.booPlus
+                ? 'Boo Plus is still activating. Please try again shortly.'
+                : 'Boo Plus is required to add another pet.',
+          ),
+        ),
+      );
+      Navigator.pop(context);
     } else {
-      setState(() => _saving = false);
+      _debugSubmission('pet_create_failed');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
             content: Text('Could not add pet'), backgroundColor: Colors.red),
       );
     }
+    } on TimeoutException {
+      _debugSubmission('pet_create_failed');
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Adding your pet timed out. Try again.')),
+      );
+    } catch (_) {
+      _debugSubmission('pet_create_failed');
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not add pet. Please try again.')),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+      _debugSubmission('pet_submit_finished');
+    }
+  }
+
+  void _debugSubmission(String category) {
+    if (kDebugMode) debugPrint('[pets] $category');
   }
 
   @override
@@ -967,7 +1127,11 @@ class _AddPetSheetState extends State<_AddPetSheet> {
           const SizedBox(height: 16),
           _SheetLabel('PET NAME'),
           const SizedBox(height: 6),
-          _SheetInput(controller: _nameCtrl, hint: "Pet's name"),
+          _SheetInput(
+            controller: _nameCtrl,
+            hint: "Pet's name",
+            errorText: _nameError,
+          ),
           const SizedBox(height: 14),
           Row(
             children: [
@@ -1097,7 +1261,12 @@ class _SheetLabel extends StatelessWidget {
 class _SheetInput extends StatelessWidget {
   final TextEditingController controller;
   final String hint;
-  const _SheetInput({required this.controller, required this.hint});
+  final String? errorText;
+  const _SheetInput({
+    required this.controller,
+    required this.hint,
+    this.errorText,
+  });
   @override
   Widget build(BuildContext context) => TextFormField(
         controller: controller,
@@ -1105,6 +1274,7 @@ class _SheetInput extends StatelessWidget {
             fontWeight: FontWeight.w600, color: Color(0xFF111827)),
         decoration: InputDecoration(
           hintText: hint,
+          errorText: errorText,
           filled: true,
           fillColor: const Color(0xFFF9FAFB),
           contentPadding:
@@ -1145,7 +1315,9 @@ class _SettingsGroup extends StatelessWidget {
           final item = e.value;
           return Column(
             children: [
-              ListTile(
+              Material(
+                color: Colors.transparent,
+                child: ListTile(
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.only(
                     topLeft: Radius.circular(i == 0 ? 16 : 0),
@@ -1171,6 +1343,7 @@ class _SettingsGroup extends StatelessWidget {
                 trailing: const Icon(Icons.chevron_right_rounded,
                     color: Color(0xFF9CA3AF)),
                 onTap: item.onTap,
+              ),
               ),
               if (i < items.length - 1)
                 const Divider(

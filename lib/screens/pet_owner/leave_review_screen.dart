@@ -34,7 +34,9 @@ class _LeaveReviewScreenState extends State<LeaveReviewScreen> {
   Future<void> _submit() async {
     if (_rating == 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a star rating'), backgroundColor: Colors.red),
+        const SnackBar(
+            content: Text('Please select a star rating'),
+            backgroundColor: Colors.red),
       );
       return;
     }
@@ -48,12 +50,17 @@ class _LeaveReviewScreenState extends State<LeaveReviewScreen> {
     setState(() => _submitting = false);
     if (ok) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Review submitted!'), backgroundColor: _orange, duration: Duration(seconds: 2)),
+        const SnackBar(
+            content: Text('Review submitted!'),
+            backgroundColor: _orange,
+            duration: Duration(seconds: 2)),
       );
       Navigator.pop(context, true); // true = review was submitted
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not submit review. Try again.'), backgroundColor: Colors.red),
+        const SnackBar(
+            content: Text('Could not submit review. Try again.'),
+            backgroundColor: Colors.red),
       );
     }
   }
@@ -69,7 +76,8 @@ class _LeaveReviewScreenState extends State<LeaveReviewScreen> {
           icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text('Leave a Review', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+        title: const Text('Leave a Review',
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -83,7 +91,12 @@ class _LeaveReviewScreenState extends State<LeaveReviewScreen> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2))],
+                  boxShadow: [
+                    BoxShadow(
+                        color: Colors.black.withOpacity(0.04),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2))
+                  ],
                 ),
                 child: Row(
                   children: [
@@ -94,7 +107,8 @@ class _LeaveReviewScreenState extends State<LeaveReviewScreen> {
                         color: _orange.withOpacity(0.12),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Icon(Icons.pets_rounded, color: _orange, size: 24),
+                      child: const Icon(Icons.pets_rounded,
+                          color: _orange, size: 24),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -102,10 +116,12 @@ class _LeaveReviewScreenState extends State<LeaveReviewScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(widget.providerName,
-                              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w800, fontSize: 15)),
                           const SizedBox(height: 2),
                           Text(widget.serviceName,
-                              style: const TextStyle(color: Colors.black45, fontSize: 13)),
+                              style: const TextStyle(
+                                  color: Colors.black45, fontSize: 13)),
                         ],
                       ),
                     ),
@@ -115,7 +131,8 @@ class _LeaveReviewScreenState extends State<LeaveReviewScreen> {
               const SizedBox(height: 28),
 
               // Star rating
-              const Text('Your Rating', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+              const Text('Your Rating',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
               const SizedBox(height: 12),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -126,9 +143,13 @@ class _LeaveReviewScreenState extends State<LeaveReviewScreen> {
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 6),
                       child: Icon(
-                        star <= _rating ? Icons.star_rounded : Icons.star_outline_rounded,
+                        star <= _rating
+                            ? Icons.star_rounded
+                            : Icons.star_outline_rounded,
                         size: 48,
-                        color: star <= _rating ? Colors.amber : Colors.grey.shade300,
+                        color: star <= _rating
+                            ? Colors.amber
+                            : Colors.grey.shade300,
                       ),
                     ),
                   );
@@ -140,7 +161,11 @@ class _LeaveReviewScreenState extends State<LeaveReviewScreen> {
                   child: Text(
                     _ratingLabel(_rating),
                     style: TextStyle(
-                      color: _rating >= 4 ? const Color(0xFF10B981) : _rating == 3 ? Colors.amber.shade700 : Colors.red,
+                      color: _rating >= 4
+                          ? const Color(0xFF10B981)
+                          : _rating == 3
+                              ? Colors.amber.shade700
+                              : Colors.red,
                       fontWeight: FontWeight.w700,
                       fontSize: 14,
                     ),
@@ -150,7 +175,8 @@ class _LeaveReviewScreenState extends State<LeaveReviewScreen> {
               const SizedBox(height: 28),
 
               // Written review
-              const Text('Review (optional)', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+              const Text('Review (optional)',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
               const SizedBox(height: 10),
               TextField(
                 controller: _textCtrl,
@@ -158,7 +184,8 @@ class _LeaveReviewScreenState extends State<LeaveReviewScreen> {
                 maxLength: 500,
                 decoration: InputDecoration(
                   hintText: 'Share details about your experience...',
-                  hintStyle: const TextStyle(color: Colors.black26, fontSize: 14),
+                  hintStyle:
+                      const TextStyle(color: Colors.black26, fontSize: 14),
                   filled: true,
                   fillColor: Colors.white,
                   contentPadding: const EdgeInsets.all(16),
@@ -174,7 +201,8 @@ class _LeaveReviewScreenState extends State<LeaveReviewScreen> {
                     borderRadius: BorderRadius.circular(14),
                     borderSide: const BorderSide(color: _orange, width: 1.5),
                   ),
-                  counterStyle: const TextStyle(fontSize: 12, color: Colors.black26),
+                  counterStyle:
+                      const TextStyle(fontSize: 12, color: Colors.black26),
                 ),
               ),
               const SizedBox(height: 28),
@@ -189,15 +217,19 @@ class _LeaveReviewScreenState extends State<LeaveReviewScreen> {
                     disabledBackgroundColor: _orange.withOpacity(0.5),
                     foregroundColor: Colors.white,
                     elevation: 0,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14)),
                   ),
                   child: _submitting
                       ? const SizedBox(
-                          width: 20, height: 20,
-                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                              color: Colors.white, strokeWidth: 2),
                         )
                       : const Text('Submit Review',
-                          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                          style: TextStyle(
+                              fontWeight: FontWeight.w800, fontSize: 16)),
                 ),
               ),
             ],
@@ -209,12 +241,18 @@ class _LeaveReviewScreenState extends State<LeaveReviewScreen> {
 
   String _ratingLabel(int r) {
     switch (r) {
-      case 1: return 'Poor';
-      case 2: return 'Fair';
-      case 3: return 'Good';
-      case 4: return 'Great';
-      case 5: return 'Excellent!';
-      default: return '';
+      case 1:
+        return 'Poor';
+      case 2:
+        return 'Fair';
+      case 3:
+        return 'Good';
+      case 4:
+        return 'Great';
+      case 5:
+        return 'Excellent!';
+      default:
+        return '';
     }
   }
 }

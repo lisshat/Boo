@@ -12,9 +12,8 @@ class BooLogo extends StatelessWidget {
     return SvgPicture.asset(
       'assets/images/boo_logo.svg',
       height: height,
-      colorFilter: color != null
-          ? ColorFilter.mode(color!, BlendMode.srcIn)
-          : null,
+      colorFilter:
+          color != null ? ColorFilter.mode(color!, BlendMode.srcIn) : null,
     );
   }
 }

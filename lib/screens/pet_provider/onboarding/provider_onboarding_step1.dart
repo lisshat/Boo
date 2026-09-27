@@ -3,12 +3,15 @@ import 'package:flutter/material.dart';
 import 'package:boo/services/auth_service.dart';
 import 'package:boo/screens/pet_owner/onboarding/owner_onboarding_step1.dart';
 import 'provider_onboarding_step2.dart';
+import 'provider_onboarding_draft.dart';
+import 'package:boo/screens/pet_owner/onboarding/onboarding_scroll_view.dart';
 
 class ProviderOnboardingStep1 extends StatefulWidget {
   const ProviderOnboardingStep1({super.key});
 
   @override
-  State<ProviderOnboardingStep1> createState() => _ProviderOnboardingStep1State();
+  State<ProviderOnboardingStep1> createState() =>
+      _ProviderOnboardingStep1State();
 }
 
 class _ProviderOnboardingStep1State extends State<ProviderOnboardingStep1> {
@@ -17,6 +20,7 @@ class _ProviderOnboardingStep1State extends State<ProviderOnboardingStep1> {
 
   String _firstName = '';
   String? _selectedType;
+  final _draft = ProviderOnboardingDraft();
 
   @override
   void initState() {
@@ -39,7 +43,8 @@ class _ProviderOnboardingStep1State extends State<ProviderOnboardingStep1> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => ProviderOnboardingStep2(providerType: _selectedType!),
+        builder: (_) => ProviderOnboardingStep2(
+            providerType: _selectedType!, draft: _draft),
       ),
     );
   }
@@ -49,8 +54,7 @@ class _ProviderOnboardingStep1State extends State<ProviderOnboardingStep1> {
     return Scaffold(
       backgroundColor: _bg,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: OnboardingScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -61,89 +65,91 @@ class _ProviderOnboardingStep1State extends State<ProviderOnboardingStep1> {
               const SizedBox(height: 32),
               Text(
                 _firstName.isEmpty ? 'Welcome 👋' : 'Welcome, $_firstName 👋',
-                style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+                style:
+                    const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
               const Text(
                 "What kind of pet care do you offer? We'll personalise your experience.",
-                style: TextStyle(fontSize: 14, color: Colors.black54, height: 1.5),
+                style:
+                    TextStyle(fontSize: 14, color: Colors.black54, height: 1.5),
               ),
               const SizedBox(height: 28),
-              Expanded(
-                child: ListView(
-                  children: _providerTypes.map((type) {
-                    final selected = _selectedType == type.value;
-                    return GestureDetector(
-                      onTap: () => setState(() => _selectedType = type.value),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 150),
-                        margin: const EdgeInsets.only(bottom: 12),
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(
-                            color: selected ? _orange : Colors.transparent,
-                            width: 2,
+              Column(
+                children: _providerTypes.map((type) {
+                  final selected = _selectedType == type.value;
+                  return GestureDetector(
+                    onTap: () => setState(() => _selectedType = type.value),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: selected ? _orange : Colors.transparent,
+                          width: 2,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.04),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
                           ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.04),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 44,
-                              height: 44,
-                              decoration: BoxDecoration(
-                                color: selected
-                                    ? _orange.withOpacity(0.1)
-                                    : Colors.grey.shade100,
-                                shape: BoxShape.circle,
-                              ),
-                              child: Icon(
-                                type.icon,
-                                color: selected ? _orange : Colors.black54,
-                                size: 22,
-                              ),
-                            ),
-                            const SizedBox(width: 14),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    type.label,
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 15,
-                                      color: selected ? _orange : Colors.black87,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    type.subtitle,
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.black45,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            if (selected)
-                              const Icon(Icons.check_circle, color: _orange, size: 20),
-                          ],
-                        ),
+                        ],
                       ),
-                    );
-                  }).toList(),
-                ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: selected
+                                  ? _orange.withOpacity(0.1)
+                                  : Colors.grey.shade100,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              type.icon,
+                              color: selected ? _orange : Colors.black54,
+                              size: 22,
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  type.label,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 15,
+                                    color: selected ? _orange : Colors.black87,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  type.subtitle,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.black45,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (selected)
+                            const Icon(Icons.check_circle,
+                                color: _orange, size: 20),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
               ),
+              const Spacer(),
               const SizedBox(height: 16),
               SizedBox(
                 width: double.infinity,
@@ -232,11 +238,21 @@ class _ProviderTopBar extends StatelessWidget {
     return Row(
       children: [
         GestureDetector(
-          onTap: () => Navigator.pop(context),
+          onTap: () {
+            if (Navigator.canPop(context)) {
+              Navigator.pop(context);
+            } else {
+              Navigator.of(context).pushNamedAndRemoveUntil(
+                '/login',
+                (_) => false,
+              );
+            }
+          },
           child: const Icon(Icons.arrow_back_ios_new, size: 18),
         ),
         const SizedBox(width: 12),
-        const Text('Boo', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        const Text('Boo',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
       ],
     );
   }

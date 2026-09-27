@@ -81,6 +81,7 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
       final result = await AdminService.instance.toggleBan(
         userId: user['id'].toString(),
         isBanned: !isBanned,
+        reason: isBanned ? null : 'Administrative policy review',
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -210,13 +211,15 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                               DataCell(
                                 user['role'] == 'admin'
                                     ? Tooltip(
-                                        message: 'Admin accounts cannot be suspended',
+                                        message:
+                                            'Admin accounts cannot be suspended',
                                         child: Icon(Icons.shield_outlined,
                                             color: AdminColors.muted, size: 20),
                                       )
                                     : TextButton(
                                         onPressed: () => _confirmBan(user),
-                                        child: Text(banned ? 'Unban' : 'Suspend'),
+                                        child:
+                                            Text(banned ? 'Unban' : 'Suspend'),
                                       ),
                               ),
                             ],

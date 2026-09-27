@@ -2,6 +2,7 @@ import 'package:boo/models/provider_models.dart';
 import 'package:boo/screens/pet_owner/booking_confirmed_screen.dart';
 import 'package:boo/screens/pet_owner/booking_failed_screen.dart';
 import 'package:boo/services/booking_service.dart';
+import 'package:boo/services/email_verification_coordinator.dart';
 import 'package:flutter/material.dart';
 
 class BookAppointmentScreen extends StatefulWidget {
@@ -209,14 +210,21 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
     return '${_dayName(_selectedDate!)}, ${_selectedDate!.day} ${_shortMonth(_selectedDate!)} · $_selectedTime';
   }
 
-  Future<void> _confirmBooking() async {
+  Future<void> _confirmBooking({bool allowVerificationRetry = true}) async {
     if (_isSubmitting) return;
+    if (!await EmailVerificationCoordinator.ensureConfirmed(
+      context,
+      actionLabel: 'Request booking',
+    )) {
+      return;
+    }
     setState(() {
       _loading = true;
       _isSubmitting = true;
     });
 
     String? errorMessage;
+    String? errorCode;
 
     try {
       await BookingService.instance.createBooking(
@@ -228,6 +236,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
       );
     } on BookingException catch (e) {
       errorMessage = e.message;
+      errorCode = e.code;
     }
 
     if (!mounted) return;
@@ -244,6 +253,13 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
         date: _selectedDate!,
         time: _selectedTime!,
       );
+    } else if (errorCode == 'EMAIL_VERIFICATION_REQUIRED' &&
+        allowVerificationRetry &&
+        await EmailVerificationCoordinator.ensureConfirmed(
+          context,
+          actionLabel: 'Request booking',
+        )) {
+      await _confirmBooking(allowVerificationRetry: false);
     } else {
       await BookingFailedScreen.show(
         context,

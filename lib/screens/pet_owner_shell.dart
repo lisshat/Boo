@@ -74,11 +74,11 @@ class _UnreadChatIcon extends StatelessWidget {
         final connected = snapshot.data == true;
         final child = Icon(icon);
         if (!connected) return child;
+        final connectedClient = BooStreamChatService.instance.connectedClient;
+        if (connectedClient == null) return child;
         return StreamBuilder<int>(
-          stream:
-              BooStreamChatService.instance.client.state.totalUnreadCountStream,
-          initialData:
-              BooStreamChatService.instance.client.state.totalUnreadCount,
+          stream: connectedClient.state.totalUnreadCountStream,
+          initialData: connectedClient.state.totalUnreadCount,
           builder: (context, unreadSnapshot) {
             final unread = unreadSnapshot.data ?? 0;
             if (unread <= 0) return child;

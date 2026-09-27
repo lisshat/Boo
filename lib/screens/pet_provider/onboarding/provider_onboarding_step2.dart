@@ -1,14 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:boo/widgets/provider_location_capture.dart';
 import 'package:boo/screens/pet_owner/onboarding/owner_onboarding_step1.dart';
 import 'provider_onboarding_step3.dart';
+import 'provider_onboarding_draft.dart';
 
 class ProviderOnboardingStep2 extends StatefulWidget {
   final String providerType;
+  final ProviderOnboardingDraft? draft;
 
-  const ProviderOnboardingStep2({super.key, required this.providerType});
+  const ProviderOnboardingStep2(
+      {super.key, required this.providerType, this.draft});
 
   @override
-  State<ProviderOnboardingStep2> createState() => _ProviderOnboardingStep2State();
+  State<ProviderOnboardingStep2> createState() =>
+      _ProviderOnboardingStep2State();
 }
 
 class _ProviderOnboardingStep2State extends State<ProviderOnboardingStep2> {
@@ -18,16 +23,35 @@ class _ProviderOnboardingStep2State extends State<ProviderOnboardingStep2> {
   final _businessNameCtrl = TextEditingController();
   final _locationCtrl = TextEditingController();
   final _bioCtrl = TextEditingController();
+  double? _latitude;
+  double? _longitude;
+  bool _capturingLocation = false;
 
   @override
   void initState() {
     super.initState();
+    final draft = widget.draft;
+    if (draft != null) {
+      _businessNameCtrl.text = draft.businessName;
+      _locationCtrl.text = draft.area;
+      _bioCtrl.text = draft.bio;
+      _latitude = draft.latitude;
+      _longitude = draft.longitude;
+    }
     _businessNameCtrl.addListener(() => setState(() {}));
     _locationCtrl.addListener(() => setState(() {}));
   }
 
   @override
   void dispose() {
+    final draft = widget.draft;
+    if (draft != null) {
+      draft.businessName = _businessNameCtrl.text;
+      draft.area = _locationCtrl.text;
+      draft.bio = _bioCtrl.text;
+      draft.latitude = _latitude;
+      draft.longitude = _longitude;
+    }
     _businessNameCtrl.dispose();
     _locationCtrl.dispose();
     _bioCtrl.dispose();
@@ -35,8 +59,10 @@ class _ProviderOnboardingStep2State extends State<ProviderOnboardingStep2> {
   }
 
   bool get _canProceed =>
+      !_capturingLocation &&
       _businessNameCtrl.text.trim().isNotEmpty &&
-      _locationCtrl.text.trim().isNotEmpty;
+      _locationCtrl.text.trim().isNotEmpty &&
+      validProviderCoordinates(_latitude, _longitude);
 
   void _goToStep3() {
     Navigator.push(
@@ -46,6 +72,8 @@ class _ProviderOnboardingStep2State extends State<ProviderOnboardingStep2> {
           providerType: widget.providerType,
           businessName: _businessNameCtrl.text.trim(),
           location: _locationCtrl.text.trim(),
+          latitude: _latitude,
+          longitude: _longitude,
           bio: _bioCtrl.text.trim(),
         ),
       ),
@@ -74,7 +102,8 @@ class _ProviderOnboardingStep2State extends State<ProviderOnboardingStep2> {
               const SizedBox(height: 8),
               RichText(
                 text: const TextSpan(
-                  style: TextStyle(fontSize: 14, color: Colors.black54, height: 1.5),
+                  style: TextStyle(
+                      fontSize: 14, color: Colors.black54, height: 1.5),
                   children: [
                     TextSpan(text: 'Owners read your profile before booking. '),
                     TextSpan(
@@ -100,7 +129,20 @@ class _ProviderOnboardingStep2State extends State<ProviderOnboardingStep2> {
               _InputField(
                 controller: _locationCtrl,
                 hint: 'e.g. Westlands, Nairobi',
-                prefix: const Icon(Icons.location_on_outlined, size: 18, color: Colors.black38),
+                prefix: const Icon(Icons.location_on_outlined,
+                    size: 18, color: Colors.black38),
+              ),
+              const SizedBox(height: 20),
+              ProviderLocationCapture(
+                areaController: _locationCtrl,
+                enableSearch: true,
+                hasCoordinates: validProviderCoordinates(_latitude, _longitude),
+                onChanged: (latitude, longitude) => setState(() {
+                  _latitude = latitude;
+                  _longitude = longitude;
+                }),
+                onCapturing: (value) =>
+                    setState(() => _capturingLocation = value),
               ),
               const SizedBox(height: 20),
               _FieldLabel('Professional Bio'),
@@ -110,17 +152,24 @@ class _ProviderOnboardingStep2State extends State<ProviderOnboardingStep2> {
                 maxLines: 4,
                 maxLength: 500,
                 textCapitalization: TextCapitalization.sentences,
-                buildCounter: (_, {required currentLength, required isFocused, maxLength}) =>
+                buildCounter: (_,
+                        {required currentLength,
+                        required isFocused,
+                        maxLength}) =>
                     Text(
                   '$currentLength / $maxLength',
                   style: TextStyle(
                     fontSize: 11,
-                    color: currentLength > 450 ? const Color(0xFFF68B1F) : Colors.black38,
+                    color: currentLength > 450
+                        ? const Color(0xFFF68B1F)
+                        : Colors.black38,
                   ),
                 ),
                 decoration: InputDecoration(
-                  hintText: 'Tell owners why they should trust you with their pet...',
-                  hintStyle: const TextStyle(color: Colors.black38, fontSize: 13),
+                  hintText:
+                      'Tell owners why they should trust you with their pet...',
+                  hintStyle:
+                      const TextStyle(color: Colors.black38, fontSize: 13),
                   filled: true,
                   fillColor: Colors.white,
                   contentPadding: const EdgeInsets.all(16),
@@ -183,7 +232,8 @@ class _FieldLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(text, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15));
+    return Text(text,
+        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15));
   }
 }
 
@@ -192,7 +242,8 @@ class _InputField extends StatelessWidget {
   final String hint;
   final Widget? prefix;
 
-  const _InputField({required this.controller, required this.hint, this.prefix});
+  const _InputField(
+      {required this.controller, required this.hint, this.prefix});
 
   @override
   Widget build(BuildContext context) {
@@ -205,7 +256,8 @@ class _InputField extends StatelessWidget {
         prefixIcon: prefix,
         filled: true,
         fillColor: Colors.white,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide.none,
@@ -225,7 +277,8 @@ class _ProviderTopBar extends StatelessWidget {
           child: const Icon(Icons.arrow_back_ios_new, size: 18),
         ),
         const SizedBox(width: 12),
-        const Text('Boo', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        const Text('Boo',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
       ],
     );
   }

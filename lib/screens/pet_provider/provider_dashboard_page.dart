@@ -1,7 +1,11 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:boo/services/auth_service.dart';
+import 'package:boo/services/email_verification_coordinator.dart';
+import 'package:boo/screens/pet_provider/advanced_earnings_insights_screen.dart';
 import 'package:boo/widgets/notification_bell.dart';
+import 'package:boo/widgets/premium_feature_gate.dart';
+import 'package:boo/services/premium_access_service.dart';
 
 class ProviderDashboardPage extends StatefulWidget {
   final void Function(int tabIndex) onSwitchTab;
@@ -89,9 +93,20 @@ class _ProviderDashboardPageState extends State<ProviderDashboardPage> {
                           ConnectionState.waiting) {
                         return const SizedBox.shrink();
                       }
+                      final emailConfirmed =
+                          snap.data?['emailVerified'] == true;
+                      if (!emailConfirmed) {
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 14),
+                          child: _EmailConfirmationNudge(
+                            onTap: () => _confirmEmail(context),
+                          ),
+                        );
+                      }
                       final status =
                           providerSnap.data?['verificationStatus'] as String?;
-                      if (status == 'approved' || status == 'pending') return const SizedBox.shrink();
+                      if (status == 'approved' || status == 'pending')
+                        return const SizedBox.shrink();
                       return Padding(
                         padding: const EdgeInsets.only(top: 14),
                         child: _VerificationNudge(
@@ -110,6 +125,12 @@ class _ProviderDashboardPageState extends State<ProviderDashboardPage> {
                           _StatsRow(stats: stats),
                           const SizedBox(height: 24),
                           _QuickActions(onSwitchTab: widget.onSwitchTab),
+                          const SizedBox(height: 16),
+                          const PremiumFeatureGate(
+                            feature: PremiumFeature.bookingAnalytics,
+                            featureReady: false,
+                            child: SizedBox.shrink(),
+                          ),
                           const SizedBox(height: 28),
                           _UpcomingSection(stats: stats),
                         ],
@@ -121,6 +142,78 @@ class _ProviderDashboardPageState extends State<ProviderDashboardPage> {
             );
           },
         ),
+      ),
+    );
+  }
+
+  Future<void> _confirmEmail(BuildContext context) async {
+    final confirmed = await EmailVerificationCoordinator.ensureConfirmed(
+      context,
+      actionLabel: 'make your profile available to pet owners',
+    );
+    if (!confirmed || !mounted) return;
+    setState(() {
+      _meFuture = _fetchMe();
+      _providerFuture = _fetchProviderProfile();
+    });
+  }
+}
+
+class _EmailConfirmationNudge extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _EmailConfirmationNudge({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF7ED),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: const Color(0xFFF68B1F).withValues(alpha: 0.35),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Make your profile available',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w900,
+              color: Color(0xFF9A3412),
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Confirm your email to make your profile available to pet owners. You can keep preparing your services and schedule meanwhile.',
+            style: TextStyle(
+              fontSize: 12,
+              height: 1.35,
+              color: Color(0xFF7C2D12),
+            ),
+          ),
+          const SizedBox(height: 10),
+          TextButton(
+            onPressed: onTap,
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.white,
+              backgroundColor: const Color(0xFFF68B1F),
+              minimumSize: const Size(0, 48),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            child: const Text(
+              'Confirm email',
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -357,6 +450,12 @@ class _QuickActions extends StatelessWidget {
             ),
           ],
         ),
+        const SizedBox(height: 12),
+        _ActionTile(
+          icon: Icons.insights_outlined,
+          label: 'Advanced earnings insights',
+          onTap: () => openAdvancedEarningsInsights(context),
+        ),
       ],
     );
   }
@@ -489,7 +588,8 @@ class _UpcomingSection extends StatelessWidget {
                   ),
                   Builder(builder: (_) {
                     final status = b['status'] as String? ?? '';
-                    final isAccepted = status == 'accepted';
+                    final isAccepted =
+                        status == 'accepted' || status == 'upcoming';
                     return Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 4),

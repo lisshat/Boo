@@ -1,4 +1,4 @@
-package com.example.boo
+package com.lisshat.boopetcare
 
 import android.content.ActivityNotFoundException
 import android.content.Intent

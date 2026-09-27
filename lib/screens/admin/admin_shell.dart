@@ -35,7 +35,8 @@ class _AdminShellState extends State<AdminShell> {
             selected: _index,
             onSelected: (i) => setState(() => _index = i),
           ),
-          Expanded(child: _pages[_index],
+          Expanded(
+            child: _pages[_index],
           ),
         ],
       ),
@@ -86,7 +87,8 @@ class _Sidebar extends StatelessWidget {
                   height: 40,
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   decoration: BoxDecoration(
-                    color: selected == i ? AdminColors.orange : Colors.transparent,
+                    color:
+                        selected == i ? AdminColors.orange : Colors.transparent,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Row(
@@ -102,7 +104,8 @@ class _Sidebar extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 13,
                           color: selected == i ? Colors.white : AdminColors.ink,
-                          fontWeight: selected == i ? FontWeight.w800 : FontWeight.w500,
+                          fontWeight:
+                              selected == i ? FontWeight.w800 : FontWeight.w500,
                         ),
                       ),
                     ],
@@ -119,11 +122,13 @@ class _Sidebar extends StatelessWidget {
               child: Icon(Icons.person, color: Colors.white),
             ),
             title: const Text('Admin User', style: TextStyle(fontSize: 12)),
-            subtitle: const Text('System Manager', style: TextStyle(fontSize: 10)),
+            subtitle:
+                const Text('System Manager', style: TextStyle(fontSize: 10)),
             onTap: () async {
               await AuthService.instance.logout();
               if (!context.mounted) return;
-              Navigator.of(context).pushNamedAndRemoveUntil('/admin-login', (_) => false);
+              Navigator.of(context)
+                  .pushNamedAndRemoveUntil('/admin-login', (_) => false);
             },
           ),
         ],
@@ -131,4 +136,3 @@ class _Sidebar extends StatelessWidget {
     );
   }
 }
-

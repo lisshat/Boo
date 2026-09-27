@@ -1,8 +1,5 @@
-import 'package:boo/screens/pet_owner/onboarding/owner_onboarding_step1.dart';
-import 'package:boo/screens/pet_owner_shell.dart';
-import 'package:boo/screens/admin/admin_shell.dart';
-import 'package:boo/screens/pet_provider/onboarding/provider_onboarding_step1.dart';
-import 'package:boo/screens/pet_provider/provider_shell.dart';
+import 'package:boo/screens/post_auth_route.dart';
+
 import 'package:boo/services/auth_service.dart';
 import 'package:flutter/material.dart';
 
@@ -26,6 +23,9 @@ class _BooAuthScreenState extends State<BooAuthScreen> {
   final _passwordCtrl = TextEditingController();
   bool _obscure = true;
   bool _loading = false;
+  // A successful sign-up keeps this route underneath onboarding so the user
+  // can correct their name without trying to register the same email again.
+  bool _authenticatedSignup = false;
 
   @override
   void initState() {
@@ -59,16 +59,19 @@ class _BooAuthScreenState extends State<BooAuthScreen> {
     final email = _emailCtrl.text.trim();
     final password = _passwordCtrl.text;
 
-    final error = isLogin
+    final submittedAsLogin = isLogin;
+    final error = submittedAsLogin
         ? await AuthService.instance.login(email, password)
-        : await AuthService.instance.register(
-            email,
-            password,
-            fullName:
-                '${_firstNameCtrl.text.trim()} ${_lastNameCtrl.text.trim()}'
-                    .trim(),
-            role: _selectedRole,
-          );
+        : _authenticatedSignup
+            ? await _updateAuthenticatedName()
+            : await AuthService.instance.register(
+                email,
+                password,
+                fullName:
+                    '${_firstNameCtrl.text.trim()} ${_lastNameCtrl.text.trim()}'
+                        .trim(),
+                role: _selectedRole,
+              );
 
     if (!mounted) return;
     setState(() => _loading = false);
@@ -84,11 +87,31 @@ class _BooAuthScreenState extends State<BooAuthScreen> {
       return;
     }
 
-    // Replace the AuthGate so it re-checks the stored token
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => _PostAuthRedirect(isNewUser: !isLogin)),
-      (_) => false,
+    if (!submittedAsLogin) _authenticatedSignup = true;
+
+    // Keep the sign-up route beneath onboarding. This makes the onboarding
+    // back action safe and lets a user correct their name after registration.
+    final route = MaterialPageRoute(
+        builder: (_) => PostAuthRoute(isNewUser: !submittedAsLogin));
+    if (submittedAsLogin) {
+      Navigator.of(context).pushAndRemoveUntil(route, (_) => false);
+    } else {
+      Navigator.of(context).push(route);
+    }
+  }
+
+  Future<String?> _updateAuthenticatedName() async {
+    final fullName =
+        '${_firstNameCtrl.text.trim()} ${_lastNameCtrl.text.trim()}'.trim();
+    final response = await ApiService.instance.patch(
+      '/auth/me',
+      {'fullName': fullName},
     );
+    if (response.statusCode == 200) return null;
+    if (response.statusCode == 401 || response.statusCode == 403) {
+      return 'Your session expired. Please sign in again.';
+    }
+    return 'Could not update your name. Please try again.';
   }
 
   @override
@@ -528,65 +551,6 @@ class _Input extends StatelessWidget {
           borderSide: const BorderSide(color: Color(0xFFF68B1F), width: 1.2),
         ),
       ),
-    );
-  }
-}
-
-enum _Destination {
-  adminShell,
-  ownerShell,
-  ownerOnboarding,
-  providerShell,
-  providerOnboarding
-}
-
-/// Routes to the correct shell after a successful login/register.
-/// For returning providers, verifies that a provider profile actually exists
-/// before sending to ProviderShell — re-routes to onboarding if it doesn't.
-class _PostAuthRedirect extends StatelessWidget {
-  final bool isNewUser;
-
-  const _PostAuthRedirect({this.isNewUser = false});
-
-  Future<_Destination> _decide() async {
-    final role = await AuthService.instance.getUserRole();
-    if (role == 'admin') return _Destination.adminShell;
-    if (role == 'owner') {
-      return isNewUser ? _Destination.ownerOnboarding : _Destination.ownerShell;
-    }
-    if (role == 'provider') {
-      if (isNewUser) return _Destination.providerOnboarding;
-      final res = await ApiService.instance.get('/providers/me');
-      return res.statusCode == 200
-          ? _Destination.providerShell
-          : _Destination.providerOnboarding;
-    }
-    return _Destination.ownerShell;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return FutureBuilder<_Destination>(
-      future: _decide(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
-        }
-        switch (snapshot.data!) {
-          case _Destination.adminShell:
-            return const AdminShell();
-          case _Destination.ownerShell:
-            return const PetOwnerShell();
-          case _Destination.ownerOnboarding:
-            return const OwnerOnboardingStep1();
-          case _Destination.providerShell:
-            return const ProviderShell();
-          case _Destination.providerOnboarding:
-            return const ProviderOnboardingStep1();
-        }
-      },
     );
   }
 }

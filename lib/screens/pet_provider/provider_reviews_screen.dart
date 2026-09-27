@@ -24,12 +24,23 @@ class _ProviderReviewsScreenState extends State<ProviderReviewsScreen> {
   }
 
   Future<void> _load() async {
-    setState(() { _isLoading = true; _error = null; });
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
     try {
       final reviews = await ReviewsService.instance.getMyProviderReviews();
-      if (mounted) setState(() { _reviews = reviews; _isLoading = false; });
+      if (mounted)
+        setState(() {
+          _reviews = reviews;
+          _isLoading = false;
+        });
     } catch (_) {
-      if (mounted) setState(() { _error = 'Could not load reviews'; _isLoading = false; });
+      if (mounted)
+        setState(() {
+          _error = 'Could not load reviews';
+          _isLoading = false;
+        });
     }
   }
 
@@ -44,9 +55,13 @@ class _ProviderReviewsScreenState extends State<ProviderReviewsScreen> {
           icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text('My Reviews', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+        title: const Text('My Reviews',
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
         actions: [
-          IconButton(icon: const Icon(Icons.refresh_rounded), onPressed: _load, tooltip: 'Refresh'),
+          IconButton(
+              icon: const Icon(Icons.refresh_rounded),
+              onPressed: _load,
+              tooltip: 'Refresh'),
         ],
       ),
       body: _isLoading
@@ -56,8 +71,12 @@ class _ProviderReviewsScreenState extends State<ProviderReviewsScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(_error!, style: const TextStyle(color: Colors.black45)),
-                      TextButton(onPressed: _load, child: const Text('Retry', style: TextStyle(color: _orange))),
+                      Text(_error!,
+                          style: const TextStyle(color: Colors.black45)),
+                      TextButton(
+                          onPressed: _load,
+                          child: const Text('Retry',
+                              style: TextStyle(color: _orange))),
                     ],
                   ),
                 )
@@ -66,12 +85,17 @@ class _ProviderReviewsScreenState extends State<ProviderReviewsScreen> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.star_outline_rounded, size: 52, color: Colors.grey.shade300),
+                          Icon(Icons.star_outline_rounded,
+                              size: 52, color: Colors.grey.shade300),
                           const SizedBox(height: 12),
-                          Text('No reviews yet', style: TextStyle(color: Colors.grey.shade500, fontWeight: FontWeight.w500)),
+                          Text('No reviews yet',
+                              style: TextStyle(
+                                  color: Colors.grey.shade500,
+                                  fontWeight: FontWeight.w500)),
                           const SizedBox(height: 4),
                           Text('Reviews from pet owners will appear here',
-                              style: TextStyle(fontSize: 12, color: Colors.grey.shade400)),
+                              style: TextStyle(
+                                  fontSize: 12, color: Colors.grey.shade400)),
                         ],
                       ),
                     )
@@ -116,7 +140,12 @@ class _ReviewCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2))],
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2))
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -128,8 +157,13 @@ class _ReviewCard extends StatelessWidget {
                 radius: 18,
                 backgroundColor: _orange.withOpacity(0.12),
                 child: Text(
-                  review.ownerName.isNotEmpty ? review.ownerName[0].toUpperCase() : '?',
-                  style: const TextStyle(color: _orange, fontWeight: FontWeight.bold, fontSize: 14),
+                  review.ownerName.isNotEmpty
+                      ? review.ownerName[0].toUpperCase()
+                      : '?',
+                  style: const TextStyle(
+                      color: _orange,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14),
                 ),
               ),
               const SizedBox(width: 10),
@@ -138,17 +172,23 @@ class _ReviewCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(review.ownerName,
-                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w700, fontSize: 14)),
                     Row(
                       children: [
-                        ...List.generate(5, (i) => Icon(
-                          i < review.rating ? Icons.star_rounded : Icons.star_outline_rounded,
-                          size: 14,
-                          color: Colors.amber,
-                        )),
+                        ...List.generate(
+                            5,
+                            (i) => Icon(
+                                  i < review.rating
+                                      ? Icons.star_rounded
+                                      : Icons.star_outline_rounded,
+                                  size: 14,
+                                  color: Colors.amber,
+                                )),
                         const SizedBox(width: 6),
                         Text(_timeAgo(review.createdAt),
-                            style: const TextStyle(fontSize: 11, color: Colors.black38)),
+                            style: const TextStyle(
+                                fontSize: 11, color: Colors.black38)),
                       ],
                     ),
                   ],
@@ -161,7 +201,8 @@ class _ReviewCard extends StatelessWidget {
           if (review.text != null && review.text!.isNotEmpty) ...[
             const SizedBox(height: 12),
             Text(review.text!,
-                style: const TextStyle(fontSize: 14, color: Colors.black87, height: 1.5)),
+                style: const TextStyle(
+                    fontSize: 14, color: Colors.black87, height: 1.5)),
           ],
 
           // Provider reply
@@ -178,10 +219,14 @@ class _ReviewCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text('Your reply',
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.black45)),
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.black45)),
                   const SizedBox(height: 4),
                   Text(review.providerReply!,
-                      style: const TextStyle(fontSize: 13, color: Colors.black87, height: 1.4)),
+                      style: const TextStyle(
+                          fontSize: 13, color: Colors.black87, height: 1.4)),
                 ],
               ),
             ),
@@ -193,12 +238,15 @@ class _ReviewCard extends StatelessWidget {
             OutlinedButton.icon(
               onPressed: () => _showReplySheet(context),
               icon: const Icon(Icons.reply_rounded, size: 16),
-              label: const Text('Reply', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+              label: const Text('Reply',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
               style: OutlinedButton.styleFrom(
                 foregroundColor: _orange,
                 side: BorderSide(color: _orange.withOpacity(0.4)),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
               ),
             ),
           ],
@@ -212,7 +260,8 @@ class _ReviewCard extends StatelessWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (_) => _ReplySheet(reviewId: review.id, onSaved: onReplied),
     );
   }
@@ -242,18 +291,23 @@ class _ReplySheetState extends State<_ReplySheet> {
   Future<void> _save() async {
     if (_ctrl.text.trim().isEmpty) return;
     setState(() => _saving = true);
-    final ok = await ReviewsService.instance.replyToReview(widget.reviewId, _ctrl.text.trim());
+    final ok = await ReviewsService.instance
+        .replyToReview(widget.reviewId, _ctrl.text.trim());
     if (!mounted) return;
     setState(() => _saving = false);
     if (ok) {
       Navigator.pop(context);
       widget.onSaved();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Reply posted'), backgroundColor: _orange, duration: Duration(seconds: 2)),
+        const SnackBar(
+            content: Text('Reply posted'),
+            backgroundColor: _orange,
+            duration: Duration(seconds: 2)),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not post reply'), backgroundColor: Colors.red),
+        const SnackBar(
+            content: Text('Could not post reply'), backgroundColor: Colors.red),
       );
     }
   }
@@ -262,14 +316,17 @@ class _ReplySheetState extends State<_ReplySheet> {
   Widget build(BuildContext context) {
     return Padding(
       padding: EdgeInsets.only(
-        left: 24, right: 24, top: 24,
+        left: 24,
+        right: 24,
+        top: 24,
         bottom: MediaQuery.of(context).viewInsets.bottom + 28,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Reply to Review', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+          const Text('Reply to Review',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
           const SizedBox(height: 16),
           TextField(
             controller: _ctrl,
@@ -299,11 +356,18 @@ class _ReplySheetState extends State<_ReplySheet> {
                 disabledBackgroundColor: _orange.withOpacity(0.5),
                 foregroundColor: Colors.white,
                 elevation: 0,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
               ),
               child: _saving
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                  : const Text('Post Reply', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                          color: Colors.white, strokeWidth: 2))
+                  : const Text('Post Reply',
+                      style:
+                          TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
             ),
           ),
         ],

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:boo/widgets/provider_location_capture.dart';
 import 'package:boo/services/auth_service.dart';
 import 'package:boo/services/cloudinary_upload_service.dart';
 import 'provider_availability_screen.dart';
@@ -7,6 +8,8 @@ import 'provider_earnings_screen.dart';
 import 'provider_reviews_screen.dart';
 import 'provider_services_page.dart';
 import 'verification_upload_screen.dart';
+import 'package:boo/screens/auth/email_confirmation_screen.dart';
+import 'package:boo/widgets/notification_settings_section.dart';
 
 class ProviderProfilePage extends StatefulWidget {
   const ProviderProfilePage({super.key});
@@ -438,6 +441,44 @@ class _ProfileBodyState extends State<_ProfileBody> {
           ),
           const SizedBox(height: 12),
 
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: ListTile(
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+              leading: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: _orange.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.mark_email_read_outlined,
+                    color: _orange, size: 18),
+              ),
+              title: const Text('Email confirmation',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+              subtitle: const Text('Confirm your Boo email address',
+                  style: TextStyle(fontSize: 12, color: Colors.black45)),
+              trailing: const Icon(Icons.chevron_right, color: Colors.black26),
+              onTap: () => EmailConfirmationScreen.show(context),
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          const NotificationSettingsSection(),
+          const SizedBox(height: 12),
+
           // My Earnings
           Container(
             decoration: BoxDecoration(
@@ -466,7 +507,7 @@ class _ProfileBodyState extends State<_ProfileBody> {
               ),
               title: const Text('My Earnings',
                   style: TextStyle(fontWeight: FontWeight.w700)),
-              subtitle: const Text('View your income breakdown',
+              subtitle: const Text('View your recorded service payments',
                   style: TextStyle(fontSize: 12, color: Colors.black45)),
               trailing: const Icon(Icons.chevron_right, color: Colors.black26),
               onTap: () => Navigator.push(
@@ -778,7 +819,18 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
   late final TextEditingController _nameCtrl;
   late final TextEditingController _bioCtrl;
   late final TextEditingController _locationCtrl;
+  double? _latitude;
+  double? _longitude;
+  bool _capturingLocation = false;
+  bool _locationChanged = false;
   bool _saving = false;
+
+  bool get _canSave =>
+      !_saving &&
+      !_capturingLocation &&
+      (!_locationChanged ||
+          (_locationCtrl.text.trim().isNotEmpty &&
+              validProviderCoordinates(_latitude, _longitude)));
 
   @override
   void initState() {
@@ -789,6 +841,8 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
         TextEditingController(text: widget.profile['bio'] as String? ?? '');
     _locationCtrl = TextEditingController(
         text: widget.profile['location'] as String? ?? '');
+    _latitude = double.tryParse(widget.profile['latitude']?.toString() ?? '');
+    _longitude = double.tryParse(widget.profile['longitude']?.toString() ?? '');
   }
 
   @override
@@ -800,12 +854,17 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
   }
 
   Future<void> _save() async {
+    if (!_canSave) return;
     setState(() => _saving = true);
     try {
       final res = await ApiService.instance.patch('/providers/me', {
         'businessName': _nameCtrl.text.trim(),
         'bio': _bioCtrl.text.trim(),
-        'location': _locationCtrl.text.trim(),
+        if (_locationChanged) ...{
+          'location': _locationCtrl.text.trim(),
+          'latitude': _latitude,
+          'longitude': _longitude,
+        },
       });
       if (!mounted) return;
       if (res.statusCode == 200) {
@@ -832,7 +891,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
+    return SingleChildScrollView(
       padding: EdgeInsets.only(
         left: 24,
         right: 24,
@@ -851,12 +910,24 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
           _BioField(controller: _bioCtrl),
           const SizedBox(height: 14),
           _Field(label: 'Location', controller: _locationCtrl),
+          ProviderLocationCapture(
+            actionLabel: 'Update service location',
+            enabled: !_saving,
+            areaController: _locationCtrl,
+            hasCoordinates: validProviderCoordinates(_latitude, _longitude),
+            onChanged: (latitude, longitude) => setState(() {
+              _latitude = latitude;
+              _longitude = longitude;
+              _locationChanged = true;
+            }),
+            onCapturing: (value) => setState(() => _capturingLocation = value),
+          ),
           const SizedBox(height: 24),
           SizedBox(
             width: double.infinity,
             height: 50,
             child: ElevatedButton(
-              onPressed: _saving ? null : _save,
+              onPressed: _canSave ? _save : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: _orange,
                 disabledBackgroundColor: _orange.withValues(alpha: 0.5),
@@ -897,24 +968,30 @@ class _BioField extends StatelessWidget {
       children: [
         const Text('Bio',
             style: TextStyle(
-                fontSize: 13, fontWeight: FontWeight.w600, color: Colors.black54)),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Colors.black54)),
         const SizedBox(height: 6),
         TextField(
           controller: controller,
           maxLines: 3,
           maxLength: 500,
-          buildCounter: (_, {required currentLength, required isFocused, maxLength}) =>
+          buildCounter: (_,
+                  {required currentLength, required isFocused, maxLength}) =>
               Text(
             '$currentLength / $maxLength',
             style: TextStyle(
               fontSize: 11,
-              color: currentLength > 450 ? const Color(0xFFF68B1F) : Colors.black38,
+              color: currentLength > 450
+                  ? const Color(0xFFF68B1F)
+                  : Colors.black38,
             ),
           ),
           decoration: InputDecoration(
             filled: true,
             fillColor: const Color(0xFFF6F7FB),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: BorderSide.none,
@@ -929,10 +1006,7 @@ class _BioField extends StatelessWidget {
 class _Field extends StatelessWidget {
   final String label;
   final TextEditingController controller;
-  final int maxLines;
-
-  const _Field(
-      {required this.label, required this.controller, this.maxLines = 1});
+  const _Field({required this.label, required this.controller});
 
   @override
   Widget build(BuildContext context) {
@@ -947,7 +1021,7 @@ class _Field extends StatelessWidget {
         const SizedBox(height: 6),
         TextField(
           controller: controller,
-          maxLines: maxLines,
+          maxLines: 1,
           decoration: InputDecoration(
             filled: true,
             fillColor: const Color(0xFFF6F7FB),

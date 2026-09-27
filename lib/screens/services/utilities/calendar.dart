@@ -12,7 +12,6 @@ List<Meeting> _getDataSource() {
 }
 
 class MeetingDataSource extends CalendarDataSource {
- 
   MeetingDataSource(List<Meeting> source) {
     appointments = source;
   }
@@ -89,12 +88,16 @@ class _AvailabilityCalendarState extends State<AvailabilityCalendar> {
     return Column(
       children: [
         Row(
-          children: [SizedBox(width: 200, child: TextField(
-            decoration: InputDecoration(
-              //hintText: Da.toString(),
-              border: UnderlineInputBorder(),
-            ),
-          ))],
+          children: [
+            SizedBox(
+                width: 200,
+                child: TextField(
+                  decoration: InputDecoration(
+                    //hintText: Da.toString(),
+                    border: UnderlineInputBorder(),
+                  ),
+                ))
+          ],
         ),
         SfCalendar(
           view: CalendarView.month,
@@ -106,11 +109,8 @@ class _AvailabilityCalendarState extends State<AvailabilityCalendar> {
           monthViewSettings: const MonthViewSettings(
               appointmentDisplayMode: MonthAppointmentDisplayMode.appointment,
               showAgenda: true,
-              agendaItemHeight: 70
-              
-              ),
-              showDatePickerButton: true,
-              
+              agendaItemHeight: 70),
+          showDatePickerButton: true,
         ),
         Row(
           children: [

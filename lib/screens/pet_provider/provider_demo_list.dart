@@ -21,6 +21,7 @@ class ProviderDemoList extends StatelessWidget {
         locationName: "Ruiru, Kiambu",
         addressLine: "Near Spur Mall",
         isVerified: true,
+        verificationStatus: 'approved',
         services: const [
           ServiceModel(
             id: "d065406d-111b-4763-80d8-c1b07446b03a",
@@ -63,6 +64,7 @@ class ProviderDemoList extends StatelessWidget {
         locationName: "Kasarani, Nairobi",
         addressLine: "Next to Total Station",
         isVerified: false,
+        verificationStatus: 'pending',
         services: const [
           ServiceModel(
             id: "b5f656b6-c9ff-4934-bb17-ea71598d0f8f",
@@ -97,6 +99,7 @@ class ProviderDemoList extends StatelessWidget {
         locationName: "Lang'ata, Nairobi",
         addressLine: "Near Bomas",
         isVerified: true,
+        verificationStatus: 'approved',
         services: const [
           ServiceModel(
             id: "305c58e6-d566-4d1a-87a7-fb5ee2b5754e",

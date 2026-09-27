@@ -49,10 +49,11 @@ class _OwnerSpendingScreenState extends State<OwnerSpendingScreen> {
                       style: TextStyle(color: Color(0xFF6B7280))),
                   const SizedBox(height: 8),
                   TextButton(
-                    onPressed: () =>
-                        setState(() => _future = BookingService.instance.getOwnerSpending()),
+                    onPressed: () => setState(() =>
+                        _future = BookingService.instance.getOwnerSpending()),
                     child: const Text('Retry',
-                        style: TextStyle(color: orange, fontWeight: FontWeight.w700)),
+                        style: TextStyle(
+                            color: orange, fontWeight: FontWeight.w700)),
                   ),
                 ],
               ),
@@ -65,8 +66,9 @@ class _OwnerSpendingScreenState extends State<OwnerSpendingScreen> {
               .cast<Map<String, dynamic>>();
           final byCategory = (data['byCategory'] as List<dynamic>? ?? [])
               .cast<Map<String, dynamic>>();
-          final recentBookings = (data['recentBookings'] as List<dynamic>? ?? [])
-              .cast<Map<String, dynamic>>();
+          final recentBookings =
+              (data['recentBookings'] as List<dynamic>? ?? [])
+                  .cast<Map<String, dynamic>>();
 
           final totalSpent = (summary['totalSpent'] as num?)?.toDouble() ?? 0;
           final completedCount = summary['completedCount'] as int? ?? 0;
@@ -75,7 +77,8 @@ class _OwnerSpendingScreenState extends State<OwnerSpendingScreen> {
           return RefreshIndicator(
             color: orange,
             onRefresh: () async {
-              setState(() => _future = BookingService.instance.getOwnerSpending());
+              setState(
+                  () => _future = BookingService.instance.getOwnerSpending());
               await _future;
             },
             child: ListView(
@@ -109,9 +112,13 @@ class _OwnerSpendingScreenState extends State<OwnerSpendingScreen> {
                       const SizedBox(height: 16),
                       Row(
                         children: [
-                          _HeroStat(label: 'Completed', value: '$completedCount bookings'),
+                          _HeroStat(
+                              label: 'Completed',
+                              value: '$completedCount bookings'),
                           const SizedBox(width: 24),
-                          _HeroStat(label: 'Upcoming', value: '$upcomingCount bookings'),
+                          _HeroStat(
+                              label: 'Upcoming',
+                              value: '$upcomingCount bookings'),
                         ],
                       ),
                     ],
@@ -122,7 +129,8 @@ class _OwnerSpendingScreenState extends State<OwnerSpendingScreen> {
                 // ── Monthly spending chart ───────────────────────────
                 if (byMonth.isNotEmpty) ...[
                   const Text('Monthly Spending',
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+                      style:
+                          TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
                   const SizedBox(height: 12),
                   _MonthlyChart(byMonth: byMonth),
                   const SizedBox(height: 20),
@@ -131,7 +139,8 @@ class _OwnerSpendingScreenState extends State<OwnerSpendingScreen> {
                 // ── Category breakdown ───────────────────────────────
                 if (byCategory.isNotEmpty) ...[
                   const Text('By Category',
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+                      style:
+                          TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
                   const SizedBox(height: 12),
                   _CategoryBreakdown(
                     byCategory: byCategory,
@@ -142,7 +151,8 @@ class _OwnerSpendingScreenState extends State<OwnerSpendingScreen> {
 
                 // ── Recent bookings ──────────────────────────────────
                 const Text('Booking History',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+                    style:
+                        TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
                 const SizedBox(height: 12),
                 if (recentBookings.isEmpty)
                   _EmptyCard(
@@ -179,7 +189,9 @@ class _HeroStat extends StatelessWidget {
             style: const TextStyle(color: Colors.white60, fontSize: 11)),
         Text(value,
             style: const TextStyle(
-                color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13)),
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 13)),
       ],
     );
   }
@@ -194,7 +206,10 @@ class _MonthlyChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final maxVal = byMonth.fold<double>(
-        0, (m, r) => (r['total'] as num).toDouble() > m ? (r['total'] as num).toDouble() : m);
+        0,
+        (m, r) => (r['total'] as num).toDouble() > m
+            ? (r['total'] as num).toDouble()
+            : m);
 
     return Container(
       height: 180,
@@ -210,9 +225,12 @@ class _MonthlyChart extends StatelessWidget {
           gridData: const FlGridData(show: false),
           borderData: FlBorderData(show: false),
           titlesData: FlTitlesData(
-            leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            leftTitles:
+                const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            rightTitles:
+                const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            topTitles:
+                const AxisTitles(sideTitles: SideTitles(showTitles: false)),
             bottomTitles: AxisTitles(
               sideTitles: SideTitles(
                 showTitles: true,
@@ -251,8 +269,18 @@ class _MonthlyChart extends StatelessWidget {
 
   static String _shortMonth(int m) {
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
     ];
     return months[(m - 1).clamp(0, 11)];
   }
@@ -279,7 +307,8 @@ class _CategoryBreakdown extends StatelessWidget {
         children: byCategory.map((cat) {
           final label = _catLabel(cat['category'] as String? ?? '');
           final amount = (cat['total'] as num).toDouble();
-          final pct = totalSpent > 0 ? (amount / totalSpent).clamp(0.0, 1.0) : 0.0;
+          final pct =
+              totalSpent > 0 ? (amount / totalSpent).clamp(0.0, 1.0) : 0.0;
           return Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: Column(
@@ -386,15 +415,15 @@ class _BookingHistoryCard extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   booking['provider'] as String? ?? '',
-                  style: const TextStyle(
-                      color: Color(0xFF6B7280), fontSize: 12),
+                  style:
+                      const TextStyle(color: Color(0xFF6B7280), fontSize: 12),
                 ),
                 if (date != null) ...[
                   const SizedBox(height: 2),
                   Text(
                     _dateLabel(date),
-                    style: const TextStyle(
-                        color: Color(0xFF9CA3AF), fontSize: 11),
+                    style:
+                        const TextStyle(color: Color(0xFF9CA3AF), fontSize: 11),
                   ),
                 ],
               ],
@@ -406,14 +435,11 @@ class _BookingHistoryCard extends StatelessWidget {
               Text(
                 _formatKsh(price),
                 style: const TextStyle(
-                    fontWeight: FontWeight.w900,
-                    color: orange,
-                    fontSize: 14),
+                    fontWeight: FontWeight.w900, color: orange, fontSize: 14),
               ),
               const SizedBox(height: 4),
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
                   color: _statusColor(status).withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(999),
@@ -438,8 +464,18 @@ class _BookingHistoryCard extends StatelessWidget {
 
   static String _dateLabel(DateTime dt) {
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
     ];
     return '${dt.day} ${months[dt.month - 1]} ${dt.year}';
   }
@@ -489,8 +525,7 @@ class _EmptyCard extends StatelessWidget {
             Icon(icon, size: 40, color: const Color(0xFFD1D5DB)),
             const SizedBox(height: 10),
             Text(message,
-                style: const TextStyle(
-                    color: Color(0xFF6B7280), fontSize: 13)),
+                style: const TextStyle(color: Color(0xFF6B7280), fontSize: 13)),
           ],
         ),
       ),

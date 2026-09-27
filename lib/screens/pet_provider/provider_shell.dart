@@ -17,13 +17,22 @@ class _ProviderShellState extends State<ProviderShell> {
   late int _index;
   late final List<Widget> _pages;
 
+  void _goToTab(int index) {
+    setState(() {
+      _index = index;
+      if (index == 0) {
+        _pages[0] = ProviderDashboardPage(onSwitchTab: _goToTab);
+      }
+    });
+  }
+
   // Tab indices: 0=Dashboard, 1=Bookings, 2=Chat, 3=Profile
   @override
   void initState() {
     super.initState();
     _index = widget.initialIndex;
     _pages = [
-      ProviderDashboardPage(onSwitchTab: (i) => setState(() => _index = i)),
+      ProviderDashboardPage(onSwitchTab: _goToTab),
       const ProviderBookingsPage(),
       const ProviderChatPage(),
       const ProviderProfilePage(),
@@ -37,7 +46,7 @@ class _ProviderShellState extends State<ProviderShell> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         indicatorColor: const Color(0xFFF68B1F).withValues(alpha: 0.15),
-        onDestinationSelected: (i) => setState(() => _index = i),
+        onDestinationSelected: _goToTab,
         destinations: [
           const NavigationDestination(
             icon: Icon(Icons.dashboard_outlined),
@@ -83,11 +92,11 @@ class _UnreadChatIcon extends StatelessWidget {
           color: selected ? const Color(0xFFF68B1F) : null,
         );
         if (!connected) return child;
+        final connectedClient = BooStreamChatService.instance.connectedClient;
+        if (connectedClient == null) return child;
         return StreamBuilder<int>(
-          stream:
-              BooStreamChatService.instance.client.state.totalUnreadCountStream,
-          initialData:
-              BooStreamChatService.instance.client.state.totalUnreadCount,
+          stream: connectedClient.state.totalUnreadCountStream,
+          initialData: connectedClient.state.totalUnreadCount,
           builder: (context, unreadSnapshot) {
             final unread = unreadSnapshot.data ?? 0;
             if (unread <= 0) return child;

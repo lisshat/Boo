@@ -43,7 +43,10 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
     _lockTimer?.cancel();
     _lockTimer = Timer.periodic(const Duration(seconds: 1), (t) {
       final left = _lockedUntil!.difference(DateTime.now()).inSeconds;
-      if (!mounted) { t.cancel(); return; }
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
       if (left <= 0) {
         t.cancel();
         setState(() {
@@ -176,7 +179,8 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                     const Text(
                       'Boo Admin Portal',
                       textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                      style:
+                          TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
                     ),
                     const SizedBox(height: 8),
                     const Text(
@@ -223,7 +227,8 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                       ),
                       validator: (v) {
                         if ((v ?? '').isEmpty) return 'Password is required';
-                        if (v!.length < 8) return 'Password must be at least 8 characters';
+                        if (v!.length < 8)
+                          return 'Password must be at least 8 characters';
                         return null;
                       },
                     ),
@@ -379,7 +384,8 @@ class _Field extends StatelessWidget {
       enabled: enabled,
       keyboardType: keyboardType,
       maxLength: maxLength,
-      buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
+      buildCounter:
+          (_, {required currentLength, required isFocused, maxLength}) => null,
       validator: validator,
       decoration: InputDecoration(
         labelText: label,

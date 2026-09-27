@@ -58,7 +58,8 @@ class ReviewsService {
   }
 
   Future<bool> replyToReview(String reviewId, String reply) async {
-    final res = await ApiService.instance.patch('/reviews/$reviewId/reply', {'reply': reply});
+    final res = await ApiService.instance
+        .patch('/reviews/$reviewId/reply', {'reply': reply});
     return res.statusCode == 200;
   }
 }

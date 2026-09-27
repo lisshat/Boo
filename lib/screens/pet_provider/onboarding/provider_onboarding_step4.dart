@@ -5,12 +5,16 @@ import 'package:boo/screens/pet_owner/onboarding/owner_onboarding_step1.dart';
 import 'package:boo/screens/pet_provider/provider_shell.dart';
 import 'package:boo/services/auth_service.dart';
 import 'package:boo/services/verification_upload_service.dart';
+import 'package:boo/services/email_verification_coordinator.dart';
 import 'provider_pending_screen.dart';
+import 'package:boo/screens/pet_owner/onboarding/onboarding_scroll_view.dart';
 
 class ProviderOnboardingStep4 extends StatefulWidget {
   final String providerType;
   final String businessName;
   final String location;
+  final double? latitude;
+  final double? longitude;
   final String bio;
   final String serviceCategory;
   final String serviceName;
@@ -23,6 +27,8 @@ class ProviderOnboardingStep4 extends StatefulWidget {
     required this.providerType,
     required this.businessName,
     required this.location,
+    this.latitude,
+    this.longitude,
     required this.bio,
     required this.serviceCategory,
     required this.serviceName,
@@ -32,7 +38,8 @@ class ProviderOnboardingStep4 extends StatefulWidget {
   });
 
   @override
-  State<ProviderOnboardingStep4> createState() => _ProviderOnboardingStep4State();
+  State<ProviderOnboardingStep4> createState() =>
+      _ProviderOnboardingStep4State();
 }
 
 class _ProviderOnboardingStep4State extends State<ProviderOnboardingStep4> {
@@ -88,6 +95,14 @@ class _ProviderOnboardingStep4State extends State<ProviderOnboardingStep4> {
   Future<void> _submitLater() => _doSubmit(withDocuments: false);
 
   Future<void> _doSubmit({required bool withDocuments}) async {
+    if (withDocuments &&
+        _hasFile &&
+        !await EmailVerificationCoordinator.ensureConfirmed(
+          context,
+          actionLabel: 'Submit provider documents',
+        )) {
+      return;
+    }
     setState(() => _submitting = true);
     try {
       final currentRole = await AuthService.instance.getUserRole();
@@ -97,6 +112,8 @@ class _ProviderOnboardingStep4State extends State<ProviderOnboardingStep4> {
         'businessName': widget.businessName,
         'bio': widget.bio,
         'location': widget.location,
+        if (widget.latitude != null) 'latitude': widget.latitude,
+        if (widget.longitude != null) 'longitude': widget.longitude,
         'service': {
           'category': _categoryMap[widget.serviceCategory] ?? 'other',
           'serviceName': widget.serviceName,
@@ -207,8 +224,7 @@ class _ProviderOnboardingStep4State extends State<ProviderOnboardingStep4> {
     return Scaffold(
       backgroundColor: _bg,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: OnboardingScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -224,12 +240,14 @@ class _ProviderOnboardingStep4State extends State<ProviderOnboardingStep4> {
               const SizedBox(height: 8),
               const Text(
                 'Verified providers appear first in search and get booked more. It only takes a few minutes.',
-                style: TextStyle(fontSize: 14, color: Colors.black54, height: 1.5),
+                style:
+                    TextStyle(fontSize: 14, color: Colors.black54, height: 1.5),
               ),
               const SizedBox(height: 8),
               const Text(
                 'JPEG, PNG, PDF or DOCX · max 50 MB',
-                style: TextStyle(fontSize: 11, color: Colors.black38, letterSpacing: 0.3),
+                style: TextStyle(
+                    fontSize: 11, color: Colors.black38, letterSpacing: 0.3),
               ),
               const SizedBox(height: 24),
               _UploadTile(
@@ -254,7 +272,8 @@ class _ProviderOnboardingStep4State extends State<ProviderOnboardingStep4> {
               const Spacer(),
               Row(
                 children: [
-                  const Icon(Icons.lock_outline, size: 14, color: Colors.black38),
+                  const Icon(Icons.lock_outline,
+                      size: 14, color: Colors.black38),
                   const SizedBox(width: 6),
                   const Expanded(
                     child: Text(
@@ -299,7 +318,8 @@ class _ProviderOnboardingStep4State extends State<ProviderOnboardingStep4> {
                               ),
                             ),
                             SizedBox(width: 8),
-                            Icon(Icons.arrow_forward, color: Colors.white, size: 18),
+                            Icon(Icons.arrow_forward,
+                                color: Colors.white, size: 18),
                           ],
                         ),
                 ),
@@ -393,7 +413,8 @@ class _UploadTile extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w600, fontSize: 14),
                   ),
                   const SizedBox(height: 2),
                   Text(
@@ -419,7 +440,8 @@ class _UploadTile extends StatelessWidget {
                 child: const Icon(Icons.close, size: 18, color: Colors.black38),
               )
             else
-              const Icon(Icons.attach_file_rounded, size: 18, color: Colors.black26),
+              const Icon(Icons.attach_file_rounded,
+                  size: 18, color: Colors.black26),
           ],
         ),
       ),
@@ -437,7 +459,8 @@ class _ProviderTopBar extends StatelessWidget {
           child: const Icon(Icons.arrow_back_ios_new, size: 18),
         ),
         const SizedBox(width: 12),
-        const Text('Boo', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        const Text('Boo',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
       ],
     );
   }

@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:boo/services/auth_service.dart';
 import 'package:boo/services/stream_chat_service.dart';
+import 'package:boo/services/report_service.dart';
+import 'package:boo/widgets/report_form_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:stream_chat_flutter/stream_chat_flutter.dart';
 
@@ -87,11 +89,6 @@ class _ChatPageState extends State<ChatPage> {
                     style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
                   ),
                 ),
-                IconButton(
-                  onPressed: () {},
-                  icon: const Icon(Icons.edit_square),
-                  tooltip: 'New message',
-                ),
               ],
             ),
           ),
@@ -104,8 +101,7 @@ class _ChatPageState extends State<ChatPage> {
               style: const TextStyle(fontSize: 14),
               decoration: InputDecoration(
                 hintText: 'Search conversations',
-                hintStyle:
-                    TextStyle(color: Colors.grey.shade400, fontSize: 14),
+                hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
                 prefixIcon: const Icon(Icons.search,
                     color: Color(0xFF9CA3AF), size: 18),
                 suffixIcon: _searchQuery.isNotEmpty
@@ -163,19 +159,20 @@ class _ChatPageState extends State<ChatPage> {
                     }
                     final visibleChannels = channels.where((c) {
                       if (_isSelfChannel(c)) return false;
+                      // Stream returns watched channels with state loaded. Keep
+                      // a channel when state is unavailable, but omit a known
+                      // empty channel until its first message is sent.
+                      if (!_hasConversationHistory(c)) return false;
                       if (_hiddenChannelKeys.contains(_channelKey(c))) {
                         return false;
                       }
                       if (_searchQuery.isEmpty) return true;
                       final other = _otherUser(c);
-                      final nameMatch = other?.name
-                              ?.toLowerCase()
-                              .contains(_searchQuery) ??
-                          false;
-                      final channelMatch = c.name
-                              ?.toLowerCase()
-                              .contains(_searchQuery) ??
-                          false;
+                      final nameMatch =
+                          other?.name.toLowerCase().contains(_searchQuery) ??
+                              false;
+                      final channelMatch =
+                          c.name?.toLowerCase().contains(_searchQuery) ?? false;
                       return nameMatch || channelMatch;
                     }).toList();
                     if (visibleChannels.isEmpty) {
@@ -198,12 +195,16 @@ class _ChatPageState extends State<ChatPage> {
                           child: _ThreadTile(
                             channel: channel,
                             onReadChanged: () => setState(() {}),
-                            onSelfChannel: () {
+                            onSelfChannel: () async {
                               setState(
                                 () => _hiddenChannelKeys
                                     .add(_channelKey(channel)),
                               );
-                              channel.hide().catchError((_) {});
+                              try {
+                                await channel.hide();
+                              } catch (_) {
+                                // Keep the channel hidden locally if Stream is unavailable.
+                              }
                             },
                           ),
                         );
@@ -285,7 +286,8 @@ class _ThreadTile extends StatelessWidget {
 
     final otherUser = _otherUser(channel);
     if (otherUser == null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => onSelfChannel?.call());
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => onSelfChannel?.call());
       return const SizedBox.shrink();
     }
 
@@ -321,7 +323,7 @@ class _ThreadTile extends StatelessWidget {
                         width: 12,
                         height: 12,
                         decoration: BoxDecoration(
-                          color: otherUser?.online == true
+                          color: otherUser.online == true
                               ? const Color(0xFF10B981)
                               : const Color(0xFFD1D5DB),
                           shape: BoxShape.circle,
@@ -480,6 +482,27 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
     });
   }
 
+  Future<void> _reportConversation() async {
+    final channelId = widget.channel.id;
+    if (channelId == null || channelId.trim().isEmpty) return;
+    final submitted = await showReportForm(
+      context,
+      title: 'Report conversation',
+      onSubmit: (reason, description) => ReportService.instance.submit(
+        streamChannelType: widget.channel.type,
+        streamChannelId: channelId,
+        reason: reason,
+        description: description,
+      ),
+    );
+    if (submitted == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Report received. Boo’s team will review it.')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final otherUser = _otherUser(widget.channel);
@@ -493,34 +516,48 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
           children: [
             _AvatarImage(user: otherUser, size: 38),
             const SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _conversationName(widget.channel, otherUser),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: 14,
-                    color: Color(0xFF111827),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _conversationName(widget.channel, otherUser),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 14,
+                      color: Color(0xFF111827),
+                    ),
                   ),
-                ),
-                Text(
-                  otherUser?.online == true ? 'Online' : 'Offline',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: otherUser?.online == true
-                        ? const Color(0xFF10B981)
-                        : const Color(0xFF9CA3AF),
-                    fontWeight: FontWeight.w600,
+                  Text(
+                    otherUser?.online == true ? 'Online' : 'Offline',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: otherUser?.online == true
+                          ? const Color(0xFF10B981)
+                          : const Color(0xFF9CA3AF),
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ],
         ),
         actions: [
-          IconButton(onPressed: () {}, icon: const Icon(Icons.call_outlined)),
-          IconButton(onPressed: () {}, icon: const Icon(Icons.more_vert)),
+          PopupMenuButton<String>(
+            tooltip: 'Conversation safety actions',
+            onSelected: (value) {
+              if (value == 'report') _reportConversation();
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem<String>(
+                value: 'report',
+                child: Text('Report conversation'),
+              ),
+            ],
+          ),
         ],
       ),
       body: FutureBuilder<void>(
@@ -540,7 +577,8 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
                   if (otherUser != null) ...[
                     if (verificationReady) ...[
                       _SafetyCheckBanner(isVerified: isVerifiedProvider),
-                      if (!isVerifiedProvider) const _UnverifiedProviderWarning(),
+                      if (!isVerifiedProvider)
+                        const _UnverifiedProviderWarning(),
                     ] else
                       const _SafetyCheckLoadingBanner(),
                   ],
@@ -628,11 +666,22 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
   }
 
   Future<bool> _loadProviderVerification() async {
-    // Always prefer the live API when provider_id is available — channel
-    // extraData can be stale (set when the chat was first opened, before
-    // the provider was verified).
-    final providerId = widget.channel.extraData['provider_id']?.toString();
-    if (providerId != null && providerId.isNotEmpty) {
+    final channelExtra = widget.channel.extraData;
+    final status = channelExtra['providerVerificationStatus'] ??
+        channelExtra['provider_verification_status'];
+    if (status is String && status.trim().isNotEmpty) {
+      return _isApprovedVerification(status);
+    }
+    final directVerification = channelExtra['isProviderVerified'] ??
+        channelExtra['provider_is_verified'];
+    if (directVerification is bool) return directVerification;
+
+    // Legacy channels may have a provider profile ID. Missing metadata is
+    // intentionally treated as unverified.
+    final providerId = channelExtra['providerProfileId']?.toString() ??
+        channelExtra['provider_id']?.toString() ??
+        '';
+    if (providerId.isNotEmpty) {
       try {
         final res = await ApiService.instance.get('/providers/$providerId');
         if (res.statusCode == 200) {
@@ -642,20 +691,9 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
       } catch (_) {}
     }
 
-    // Fallback: stale channel extra data or Stream user metadata.
-    final channelExtra = widget.channel.extraData;
-    final directVerification = channelExtra['provider_is_verified'];
-    if (directVerification is bool) return directVerification;
-
-    final directStatus = channelExtra['provider_verification_status'] ??
-        channelExtra['providerVerificationStatus'];
-    if (directStatus is String && directStatus.isNotEmpty) {
-      final normalized = directStatus.toLowerCase();
-      if (normalized == 'verified' || normalized == 'approved') return true;
-      if (normalized == 'unverified' || normalized == 'pending') return false;
-    }
-
-    return _isVerifiedProvider(widget.channel, _otherUser(widget.channel));
+    // Legacy channels without explicit provider metadata are treated as
+    // unverified rather than assuming a verified account.
+    return false;
   }
 }
 
@@ -703,7 +741,7 @@ class _UnverifiedProviderWarning extends StatelessWidget {
         border: Border.all(color: const Color(0xFFF59E0B)),
       ),
       child: const Text(
-        'Identity Not Verified\nThis provider has not completed our security check. For your pet\'s safety, request a video call and meet in a public park before booking.',
+        'Identity Not Verified\nThis provider has not completed our security check. For your safety, meet in a public place before booking and keep important coordination in this chat.',
         style: TextStyle(
           fontSize: 12,
           height: 1.35,
@@ -930,24 +968,20 @@ DateTime? _lastMessageAt(Channel channel) {
   return channel.state?.channelState.channel?.lastMessageAt;
 }
 
+bool _hasConversationHistory(Channel channel) {
+  final state = channel.state;
+  if (state == null) return true;
+  return state.messages.isNotEmpty ||
+      state.channelState.channel?.lastMessageAt != null;
+}
+
 String _conversationName(Channel channel, User? otherUser) {
   return channel.name ?? otherUser?.name ?? 'Conversation';
 }
 
-bool _isVerifiedProvider(Channel channel, User? otherUser) {
-  final userExtra = otherUser?.extraData ?? const <String, Object?>{};
-  final channelExtra = channel.extraData;
-  final values = [
-    userExtra['isVerified'],
-    userExtra['is_verified'],
-    userExtra['verificationStatus'],
-    userExtra['verification_status'],
-    channelExtra['provider_is_verified'],
-    channelExtra['providerVerificationStatus'],
-    channelExtra['provider_verification_status'],
-  ];
-  return values.any(
-      (value) => value == true || value == 'approved' || value == 'verified');
+bool _isApprovedVerification(String status) {
+  final normalized = status.trim().toLowerCase();
+  return normalized == 'approved' || normalized == 'verified';
 }
 
 String _relativeTime(DateTime? value) {

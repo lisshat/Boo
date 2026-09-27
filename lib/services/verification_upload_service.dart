@@ -132,8 +132,9 @@ class VerificationUploadService {
     if (response.statusCode != 200 && response.statusCode != 201) {
       final body = jsonDecode(response.body) as Map<String, dynamic>;
       final message = body['message'];
-      throw Exception(
-        message is List
+      throw VerificationUploadException(
+        code: body['code']?.toString(),
+        message: message is List
             ? message.first.toString()
             : message?.toString() ?? 'Could not submit verification document',
       );
@@ -147,4 +148,15 @@ class VerificationUploadService {
     }
     throw Exception('Could not load verification status');
   }
+}
+
+class VerificationUploadException implements Exception {
+  final String? code;
+  final String message;
+
+  const VerificationUploadException(
+      {required this.code, required this.message});
+
+  @override
+  String toString() => message;
 }

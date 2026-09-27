@@ -1,5 +1,6 @@
 import 'package:boo/screens/pet_provider/provider_shell.dart';
 import 'package:flutter/material.dart';
+import 'package:boo/screens/pet_owner/onboarding/onboarding_scroll_view.dart';
 
 class ProviderPendingScreen extends StatelessWidget {
   const ProviderPendingScreen({super.key});
@@ -12,8 +13,8 @@ class ProviderPendingScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: _bg,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: OnboardingScrollView(
+          horizontalPadding: 32,
           child: Column(
             children: [
               const Spacer(),
@@ -40,7 +41,8 @@ class ProviderPendingScreen extends StatelessWidget {
               const Text(
                 "Our team will review your documents and get back to you within 24–48 hours. We'll notify you as soon as you're approved.",
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 14, color: Colors.black54, height: 1.6),
+                style:
+                    TextStyle(fontSize: 14, color: Colors.black54, height: 1.6),
               ),
               const SizedBox(height: 32),
               Container(
@@ -53,7 +55,10 @@ class ProviderPendingScreen extends StatelessWidget {
                   children: [
                     _StatusRow(label: 'Profile submitted', done: true),
                     SizedBox(height: 12),
-                    _StatusRow(label: 'Documents under review', done: false, active: true),
+                    _StatusRow(
+                        label: 'Documents under review',
+                        done: false,
+                        active: true),
                     SizedBox(height: 12),
                     _StatusRow(label: 'Verification approved', done: false),
                     SizedBox(height: 12),
@@ -102,7 +107,8 @@ class _StatusRow extends StatelessWidget {
   final bool done;
   final bool active;
 
-  const _StatusRow({required this.label, required this.done, this.active = false});
+  const _StatusRow(
+      {required this.label, required this.done, this.active = false});
 
   @override
   Widget build(BuildContext context) {

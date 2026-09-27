@@ -16,7 +16,15 @@ class _ProviderAvailabilityScreenState
   static const _orange = Color(0xFFF68B1F);
   static const _bg = Color(0xFFF6F7FB);
 
-  static const _dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  static const _dayNames = [
+    'Sunday',
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday'
+  ];
 
   // Index = dayOfWeek (0=Sun ... 6=Sat)
   late List<bool> _available;
@@ -110,13 +118,16 @@ class _ProviderAvailabilityScreenState
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
-      final days = List.generate(7, (i) => {
-        'dayOfWeek': i,
-        'startTime': _formatTimeForApi(_startTimes[i]),
-        'endTime': _formatTimeForApi(_endTimes[i]),
-        'isAvailable': _available[i],
-      });
-      final res = await ApiService.instance.put('/providers/me/availability', {'days': days});
+      final days = List.generate(
+          7,
+          (i) => {
+                'dayOfWeek': i,
+                'startTime': _formatTimeForApi(_startTimes[i]),
+                'endTime': _formatTimeForApi(_endTimes[i]),
+                'isAvailable': _available[i],
+              });
+      final res = await ApiService.instance
+          .put('/providers/me/availability', {'days': days});
       if (!mounted) return;
       if (res.statusCode == 200) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -138,7 +149,8 @@ class _ProviderAvailabilityScreenState
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Connection error'), backgroundColor: Colors.red),
+          const SnackBar(
+              content: Text('Connection error'), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -169,19 +181,23 @@ class _ProviderAvailabilityScreenState
                   ),
                   child: const Text(
                     'Set the days and times you are available for bookings. Owners will only see slots within these hours.',
-                    style: TextStyle(fontSize: 13, color: Color(0xFF374151), height: 1.5),
+                    style: TextStyle(
+                        fontSize: 13, color: Color(0xFF374151), height: 1.5),
                   ),
                 ),
                 const SizedBox(height: 16),
-                ...List.generate(7, (i) => _DayRow(
-                  dayName: _dayNames[i],
-                  isAvailable: _available[i],
-                  startTime: _formatTimeDisplay(_startTimes[i]),
-                  endTime: _formatTimeDisplay(_endTimes[i]),
-                  onToggle: (val) => setState(() => _available[i] = val),
-                  onTapStart: () => _pickTime(i, true),
-                  onTapEnd: () => _pickTime(i, false),
-                )),
+                ...List.generate(
+                    7,
+                    (i) => _DayRow(
+                          dayName: _dayNames[i],
+                          isAvailable: _available[i],
+                          startTime: _formatTimeDisplay(_startTimes[i]),
+                          endTime: _formatTimeDisplay(_endTimes[i]),
+                          onToggle: (val) =>
+                              setState(() => _available[i] = val),
+                          onTapStart: () => _pickTime(i, true),
+                          onTapEnd: () => _pickTime(i, false),
+                        )),
               ],
             ),
       bottomNavigationBar: SafeArea(
@@ -196,16 +212,22 @@ class _ProviderAvailabilityScreenState
                 backgroundColor: _orange,
                 disabledBackgroundColor: _orange.withOpacity(0.5),
                 elevation: 0,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
               ),
               child: _saving
                   ? const SizedBox(
-                      width: 20, height: 20,
-                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                          color: Colors.white, strokeWidth: 2),
                     )
                   : const Text(
                       'Save Working Hours',
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 16),
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 16),
                     ),
             ),
           ),
@@ -256,7 +278,9 @@ class _DayRow extends StatelessWidget {
                   style: TextStyle(
                     fontWeight: FontWeight.w700,
                     fontSize: 14,
-                    color: isAvailable ? const Color(0xFF111827) : const Color(0xFF9CA3AF),
+                    color: isAvailable
+                        ? const Color(0xFF111827)
+                        : const Color(0xFF9CA3AF),
                   ),
                 ),
               ),
@@ -271,11 +295,13 @@ class _DayRow extends StatelessWidget {
             const Divider(height: 12),
             Row(
               children: [
-                const Text('From', style: TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
+                const Text('From',
+                    style: TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
                 const SizedBox(width: 8),
                 _TimePill(time: startTime, onTap: onTapStart),
                 const SizedBox(width: 12),
-                const Text('To', style: TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
+                const Text('To',
+                    style: TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
                 const SizedBox(width: 8),
                 _TimePill(time: endTime, onTap: onTapEnd),
               ],
@@ -284,7 +310,8 @@ class _DayRow extends StatelessWidget {
             const SizedBox(height: 2),
             const Align(
               alignment: Alignment.centerLeft,
-              child: Text('Closed', style: TextStyle(fontSize: 12, color: Color(0xFF9CA3AF))),
+              child: Text('Closed',
+                  style: TextStyle(fontSize: 12, color: Color(0xFF9CA3AF))),
             ),
           ],
         ],

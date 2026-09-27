@@ -58,9 +58,12 @@ class AdminService {
     throw Exception('Could not load users');
   }
 
-  Future<void> setBanned(String userId, bool isBanned) async {
+  Future<void> setBanned(String userId, bool isBanned,
+      {String? reason, String? reportId}) async {
     final res = await ApiService.instance.patch('/admin/users/$userId', {
       'isBanned': isBanned,
+      if (isBanned && reason != null) 'reason': reason.trim(),
+      if (reportId != null) 'reportId': reportId,
     });
     if (res.statusCode != 200) {
       final body = jsonDecode(res.body) as Map<String, dynamic>;
@@ -71,9 +74,13 @@ class AdminService {
   Future<Map<String, dynamic>> toggleBan({
     required String userId,
     required bool isBanned,
+    String? reason,
+    String? reportId,
   }) async {
     final res = await ApiService.instance.patch('/admin/users/$userId', {
       'isBanned': isBanned,
+      if (isBanned && reason != null) 'reason': reason.trim(),
+      if (reportId != null) 'reportId': reportId,
     });
     if (res.statusCode == 200) {
       return jsonDecode(res.body) as Map<String, dynamic>;
@@ -211,8 +218,12 @@ class AdminService {
     throw Exception('Could not load pet activity report');
   }
 
-  Future<void> warnUser(String userId) async {
-    final res = await ApiService.instance.post('/admin/users/$userId/warn', {});
+  Future<void> warnUser(String userId,
+      {String message = 'Policy violation notice', String? reportId}) async {
+    final res = await ApiService.instance.post('/admin/users/$userId/warn', {
+      'message': message.trim(),
+      if (reportId != null) 'reportId': reportId,
+    });
     if (res.statusCode != 200 && res.statusCode != 201) {
       throw Exception('Could not warn user');
     }

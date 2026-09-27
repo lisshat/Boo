@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:boo/models/provider_models.dart';
@@ -5,6 +6,7 @@ import 'package:boo/screens/pet_provider/recommended_provider_card.dart';
 import 'package:boo/services/auth_service.dart';
 import 'package:boo/widgets/notification_bell.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import 'package:geolocator/geolocator.dart';
 
 class HomeDashboardPage extends StatefulWidget {
@@ -12,6 +14,16 @@ class HomeDashboardPage extends StatefulWidget {
 
   @override
   State<HomeDashboardPage> createState() => _HomeDashboardPageState();
+}
+
+enum _LocationAcquisitionState {
+  loading,
+  available,
+  serviceDisabled,
+  permissionDenied,
+  permissionDeniedForever,
+  timedOut,
+  unavailable,
 }
 
 class _HomeDashboardPageState extends State<HomeDashboardPage> {
@@ -30,13 +42,23 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
   List<ProviderModel> _allProviders = [];
   bool _providersLoading = false;
   String? _providersError;
+  bool _meRetrying = false;
+  bool _locationPermissionRequested = false;
+  bool _usingProviderFallback = false;
+  _LocationAcquisitionState _locationState = _LocationAcquisitionState.loading;
+  Future<void>? _locationAttempt;
 
   @override
   void initState() {
     super.initState();
     _meFuture = _fetchMe();
     _searchCtrl.addListener(() => setState(() {}));
-    _initLocation();
+    // Requesting Android location permission before the first frame can leave
+    // the platform dialog suppressed on a cold start. Start it once the Home
+    // shell is mounted and visible.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _initLocation();
+    });
   }
 
   @override
@@ -47,44 +69,136 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
 
   Future<Map<String, dynamic>> _fetchMe() async {
     if (UserCache.instance.data != null) return UserCache.instance.data!;
-    final res = await ApiService.instance.get('/auth/me');
-    if (res.statusCode == 200) {
-      final data = jsonDecode(res.body) as Map<String, dynamic>;
-      UserCache.instance.set(data);
-      return data;
+    final stopwatch = Stopwatch()..start();
+    try {
+      final res = await ApiService.instance
+          .get('/auth/me')
+          .timeout(const Duration(seconds: 15));
+      if (kDebugMode) {
+        debugPrint('[auth timing] auth_me ${stopwatch.elapsedMilliseconds}ms');
+      }
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        UserCache.instance.set(data);
+        return data;
+      }
+      throw Exception('Failed to load user');
+    } catch (_) {
+      if (kDebugMode) {
+        debugPrint(
+            '[auth timing] auth_me_failed ${stopwatch.elapsedMilliseconds}ms');
+      }
+      rethrow;
     }
-    throw Exception('Failed to load user (${res.statusCode})');
   }
 
-  Future<void> _initLocation() async {
+  Future<void> _retryMe() async {
+    if (_meRetrying || !mounted) return;
+    setState(() => _meRetrying = true);
     try {
-      final permission = await Geolocator.checkPermission();
-      LocationPermission perm = permission;
-      if (perm == LocationPermission.denied) {
-        perm = await Geolocator.requestPermission();
-      }
-      if (perm == LocationPermission.deniedForever ||
-          perm == LocationPermission.denied) {
-        setState(() => _locationLoading = false);
-        _fetchProviders();
-        return;
-      }
-
-      final pos = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.low,
-          timeLimit: Duration(seconds: 6),
-        ),
-      );
-      if (mounted)
-        setState(() {
-          _position = pos;
-          _locationLoading = false;
-        });
+      final future = _fetchMe();
+      if (mounted) setState(() => _meFuture = future);
+      await future;
     } catch (_) {
-      if (mounted) setState(() => _locationLoading = false);
+      // FutureBuilder displays the safe retry state.
+    } finally {
+      if (mounted) setState(() => _meRetrying = false);
     }
-    _fetchProviders();
+  }
+
+  Future<void> _signOutFromHome() async {
+    if (_meRetrying) return;
+    await AuthService.instance.logout();
+    if (!mounted) return;
+    navigatorKey.currentState?.pushNamedAndRemoveUntil(
+      '/login',
+      (route) => false,
+    );
+  }
+
+  Future<void> _initLocation() {
+    final activeAttempt = _locationAttempt;
+    if (activeAttempt != null) return activeAttempt;
+
+    final attempt = _runLocationAttempt();
+    _locationAttempt = attempt;
+    return attempt.whenComplete(() {
+      if (identical(_locationAttempt, attempt)) _locationAttempt = null;
+    });
+  }
+
+  Future<void> _runLocationAttempt() async {
+    if (!mounted) return;
+    setState(() {
+      _locationLoading = true;
+      _locationState = _LocationAcquisitionState.loading;
+      _providersError = null;
+      // Never keep using an old position while a new attempt is resolving.
+      _position = null;
+    });
+
+    var terminalState = _LocationAcquisitionState.unavailable;
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled()
+          .timeout(const Duration(seconds: 3));
+      if (!serviceEnabled) {
+        terminalState = _LocationAcquisitionState.serviceDisabled;
+      } else {
+        var permission = await Geolocator.checkPermission()
+            .timeout(const Duration(seconds: 3));
+        if (permission == LocationPermission.denied &&
+            !_locationPermissionRequested) {
+          _locationPermissionRequested = true;
+          permission = await Geolocator.requestPermission()
+              .timeout(const Duration(seconds: 10));
+        }
+
+        if (permission == LocationPermission.deniedForever) {
+          terminalState = _LocationAcquisitionState.permissionDeniedForever;
+        } else if (permission == LocationPermission.denied) {
+          terminalState = _LocationAcquisitionState.permissionDenied;
+        } else if (permission != LocationPermission.always &&
+            permission != LocationPermission.whileInUse) {
+          terminalState = _LocationAcquisitionState.unavailable;
+        } else {
+          final position = await Geolocator.getCurrentPosition(
+            locationSettings: const LocationSettings(
+              accuracy: LocationAccuracy.low,
+              timeLimit: Duration(seconds: 15),
+            ),
+          ).timeout(const Duration(seconds: 16));
+          if (!position.latitude.isFinite ||
+              !position.longitude.isFinite ||
+              position.latitude < -90 ||
+              position.latitude > 90 ||
+              position.longitude < -180 ||
+              position.longitude > 180) {
+            terminalState = _LocationAcquisitionState.unavailable;
+          } else {
+            terminalState = _LocationAcquisitionState.available;
+            if (mounted) {
+              setState(() => _position = position);
+            }
+          }
+        }
+      }
+    } on TimeoutException {
+      terminalState = _LocationAcquisitionState.timedOut;
+    } catch (_) {
+      terminalState = _LocationAcquisitionState.unavailable;
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        _locationState = terminalState;
+        _locationLoading = false;
+        if (terminalState != _LocationAcquisitionState.available) {
+          _position = null;
+          // Location is optional; browse the unscoped discoverable list.
+          _radius = null;
+        }
+      });
+      await _fetchProviders();
+    }
   }
 
   Future<void> _fetchProviders() async {
@@ -94,9 +208,15 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
       _providersError = null;
     });
 
+    // A missing position must never prevent browsing. If a distance filter is
+    // still selected, fall back to the unscoped discoverable-provider query.
+    if (_position == null && _radius != null) _radius = null;
+    _usingProviderFallback = _position == null;
+
     String path = '/providers';
     if (_position != null && _radius != null) {
-      path += '?lat=${_position!.latitude}&lng=${_position!.longitude}&radius=$_radius';
+      path +=
+          '?lat=${_position!.latitude}&lng=${_position!.longitude}&radius=$_radius';
     }
 
     try {
@@ -129,21 +249,18 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
   List<ProviderModel> get _filteredProviders {
     var list = _allProviders;
 
-    // Client-side radius guard: backend skips providers with null coords,
-    // so enforce the radius here for any that slipped through.
-    if (_position != null && _radius != null) {
-      list = list.where((p) {
-        final lat = p.latitude;
-        final lng = p.longitude;
-        if (lat == null || lng == null) return false;
-        final distM = Geolocator.distanceBetween(
-          _position!.latitude, _position!.longitude, lat, lng);
-        return distM <= _radius! * 1000;
-      }).toList();
-    }
-
     if (_selectedCategory != null) {
-      list = list.where((p) => p.type == _selectedCategory).toList();
+      final category = switch (_selectedCategory!) {
+        ProviderType.boarding => 'boarding',
+        ProviderType.sitter => 'sitting',
+        ProviderType.groomer => 'grooming',
+        ProviderType.vet => 'veterinary',
+      };
+      list = list
+          .where((p) => p.services.any(
+                (service) => service.enabled && service.category == category,
+              ))
+          .toList();
     }
     final query = _searchCtrl.text.trim().toLowerCase();
     if (query.isNotEmpty) {
@@ -161,12 +278,11 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
     if (_sortBy == 'recommended') {
       list = List.from(list)
         ..sort((a, b) {
-          final scoreDiff =
-              b.recommendedScore.compareTo(a.recommendedScore);
+          final scoreDiff = b.recommendedScore.compareTo(a.recommendedScore);
           if (scoreDiff != 0) return scoreDiff;
           final ratingDiff = b.rating.compareTo(a.rating);
           if (ratingDiff != 0) return ratingDiff;
-          if (_position != null) {
+          if (_radius != null) {
             final dA = _distKm(a);
             final dB = _distKm(b);
             if (dA != null && dB != null) return dA.compareTo(dB);
@@ -181,13 +297,28 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
   }
 
   double? _distKm(ProviderModel p) {
-    if (_position == null || p.latitude == null || p.longitude == null) {
-      return null;
+    return p.distanceKm;
+  }
+
+  String get _locationUnavailableLabel => switch (_locationState) {
+        _LocationAcquisitionState.serviceDisabled => 'Location is off',
+        _LocationAcquisitionState.permissionDenied =>
+          'Location permission denied',
+        _LocationAcquisitionState.permissionDeniedForever =>
+          'Location permission needs Settings',
+        _LocationAcquisitionState.timedOut => 'Location timed out',
+        _LocationAcquisitionState.unavailable => 'Location unavailable',
+        _ => 'Location unavailable',
+      };
+
+  Future<void> _recoverLocation() async {
+    if (_locationState == _LocationAcquisitionState.serviceDisabled) {
+      await Geolocator.openLocationSettings();
+    } else if (_locationState ==
+        _LocationAcquisitionState.permissionDeniedForever) {
+      await Geolocator.openAppSettings();
     }
-    return Geolocator.distanceBetween(
-          _position!.latitude, _position!.longitude,
-          p.latitude!, p.longitude!) /
-        1000;
+    if (mounted) _initLocation();
   }
 
   bool get _filtersActive =>
@@ -205,6 +336,8 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
         sortBy: _sortBy,
         radius: _radius,
         hasLocation: _position != null,
+        locationHint: _locationUnavailableLabel,
+        onRecoverLocation: _recoverLocation,
         onSortChanged: (val) => setState(() => _sortBy = val),
         onRadiusChanged: (val) {
           setState(() => _radius = val);
@@ -234,7 +367,7 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
         future: _meFuture,
         builder: (context, asyncSnapshot) {
           if (asyncSnapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return _HomeAccountLoadingShell();
           }
           if (asyncSnapshot.hasError) {
             return Center(
@@ -244,19 +377,34 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
                   const Text('Could not connect to server.',
                       style: TextStyle(color: Colors.black54)),
                   const SizedBox(height: 8),
-                  TextButton(
-                    onPressed: () => setState(() {
-                      _meFuture = _fetchMe();
-                    }),
-                    child: const Text('Retry',
-                        style: TextStyle(color: Color(0xFFF68B1F))),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextButton(
+                        onPressed: _meRetrying ? null : _retryMe,
+                        child: _meRetrying
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Text('Try again',
+                                style: TextStyle(color: Color(0xFFF68B1F))),
+                      ),
+                      TextButton(
+                        onPressed: _meRetrying ? null : _signOutFromHome,
+                        child: const Text('Sign out',
+                            style: TextStyle(color: Color(0xFF6B7280))),
+                      ),
+                    ],
                   ),
                 ],
               ),
             );
           }
 
-          final userData = asyncSnapshot.data!;
+          final userData = UserCache.instance.data ?? asyncSnapshot.data!;
           final providers = _filteredProviders;
 
           return ListView(
@@ -294,7 +442,7 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
                                   size: 14, color: Color(0xFFF68B1F)),
                               const SizedBox(width: 4),
                               Text(
-                                _radius != null
+                                _radius != null && _position != null
                                     ? 'Within $_radius km'
                                     : 'All providers',
                                 style: TextStyle(
@@ -304,10 +452,25 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
                               const Icon(Icons.location_off_rounded,
                                   size: 14, color: Color(0xFF9CA3AF)),
                               const SizedBox(width: 4),
-                              Text('Location unavailable',
-                                  style: TextStyle(
-                                      color: Colors.grey.shade500,
-                                      fontSize: 12)),
+                              Flexible(
+                                child: Text(_locationUnavailableLabel,
+                                    style: TextStyle(
+                                        color: Colors.grey.shade500,
+                                        fontSize: 12)),
+                              ),
+                              TextButton(
+                                onPressed: _recoverLocation,
+                                style: TextButton.styleFrom(
+                                  padding:
+                                      const EdgeInsets.symmetric(horizontal: 6),
+                                  minimumSize: const Size(48, 36),
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                ),
+                                child: const Text('Enable',
+                                    style:
+                                        TextStyle(color: orange, fontSize: 12)),
+                              ),
                             ],
                           ],
                         ),
@@ -460,7 +623,9 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
                               style: TextStyle(color: orange)),
                         )
                       : TextButton(
-                          onPressed: _providersLoading ? null : _fetchProviders,
+                          onPressed: _locationLoading || _providersLoading
+                              ? null
+                              : _initLocation,
                           child: const Text('Refresh',
                               style: TextStyle(color: orange)),
                         ),
@@ -483,7 +648,7 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
                             style: const TextStyle(color: Color(0xFF6B7280))),
                         const SizedBox(height: 8),
                         TextButton(
-                          onPressed: _fetchProviders,
+                          onPressed: _initLocation,
                           child: const Text('Retry',
                               style: TextStyle(color: orange)),
                         ),
@@ -495,11 +660,36 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 40),
                   child: Center(
-                    child: Text(
-                      _allProviders.isEmpty
-                          ? 'No providers available yet.'
-                          : 'No providers match your search.',
-                      style: TextStyle(color: Colors.grey.shade500),
+                    child: Column(
+                      children: [
+                        Text(
+                          _allProviders.isEmpty
+                              ? 'No eligible providers are available yet.'
+                              : 'No providers match your search or category.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.grey.shade500),
+                        ),
+                        if (_allProviders.isEmpty &&
+                            _usingProviderFallback) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            'You can browse all providers without location. Try again later for new providers.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Colors.grey.shade500,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 8),
+                        TextButton(
+                          onPressed: _locationLoading || _providersLoading
+                              ? null
+                              : _initLocation,
+                          child: const Text('Try again',
+                              style: TextStyle(color: orange)),
+                        ),
+                      ],
                     ),
                   ),
                 )
@@ -522,12 +712,77 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
   }
 }
 
+class _HomeAccountLoadingShell extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 170,
+                    height: 20,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEDEFF2),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Container(
+                    width: 125,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F2F4),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Color(0xFFF68B1F),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 28),
+        Container(
+          height: 48,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFEAECEF)),
+          ),
+        ),
+        const SizedBox(height: 28),
+        const Center(
+          child: Text(
+            'Loading your Boo home…',
+            style: TextStyle(color: Color(0xFF6B7280)),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 // ── Filter bottom sheet ───────────────────────────────────────────────────────
 
 class _FilterSheet extends StatelessWidget {
   final String sortBy;
   final int? radius;
   final bool hasLocation;
+  final String locationHint;
+  final VoidCallback onRecoverLocation;
   final ValueChanged<String> onSortChanged;
   final ValueChanged<int?> onRadiusChanged;
 
@@ -535,6 +790,8 @@ class _FilterSheet extends StatelessWidget {
     required this.sortBy,
     required this.radius,
     required this.hasLocation,
+    required this.locationHint,
+    required this.onRecoverLocation,
     required this.onSortChanged,
     required this.onRadiusChanged,
   });
@@ -575,8 +832,22 @@ class _FilterSheet extends StatelessWidget {
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
               if (!hasLocation) ...[
                 const SizedBox(width: 8),
-                const Text('(enable location)',
-                    style: TextStyle(fontSize: 12, color: Color(0xFF9CA3AF))),
+                Flexible(
+                  child: Text('($locationHint)',
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 12, color: Color(0xFF9CA3AF))),
+                ),
+                TextButton(
+                  onPressed: onRecoverLocation,
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    minimumSize: const Size(48, 36),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: const Text('Retry',
+                      style: TextStyle(color: Color(0xFFF68B1F))),
+                ),
               ],
             ],
           ),

@@ -52,7 +52,8 @@ class AdminStatusPill extends StatelessWidget {
       ),
       child: Text(
         text,
-        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color),
+        style:
+            TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color),
       ),
     );
   }
@@ -75,4 +76,3 @@ Color adminStatusColor(String status) {
       return AdminColors.muted;
   }
 }
-

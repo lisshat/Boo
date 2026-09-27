@@ -31,12 +31,14 @@ class BookingFailedScreen {
                   children: [
                     IconButton(
                       onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close_rounded, color: Color(0xFF6B7280)),
+                      icon: const Icon(Icons.close_rounded,
+                          color: Color(0xFF6B7280)),
                     ),
                     const Expanded(
                       child: Text(
                         'Booking Status',
-                        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+                        style: TextStyle(
+                            fontWeight: FontWeight.w800, fontSize: 15),
                       ),
                     ),
                   ],
@@ -59,7 +61,8 @@ class BookingFailedScreen {
                         width: 90,
                         height: 90,
                         color: const Color(0xFFF3F4F6),
-                        child: const Icon(Icons.pets, color: Color(0xFF9CA3AF), size: 40),
+                        child: const Icon(Icons.pets,
+                            color: Color(0xFF9CA3AF), size: 40),
                       ),
                     ),
                   ),
@@ -73,7 +76,8 @@ class BookingFailedScreen {
                         color: Color(0xFFEF4444),
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(Icons.close_rounded, color: Colors.white, size: 16),
+                      child: const Icon(Icons.close_rounded,
+                          color: Colors.white, size: 16),
                     ),
                   ),
                 ],
@@ -120,7 +124,8 @@ class BookingFailedScreen {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      reason ?? 'Your booking didn\'t go through. This is usually a connection issue — please check your internet and tap Try Again.',
+                      reason ??
+                          'Your booking didn\'t go through. This is usually a connection issue — please check your internet and tap Try Again.',
                       style: const TextStyle(
                           color: Color(0xFF374151), height: 1.4, fontSize: 13),
                     ),
@@ -155,7 +160,8 @@ class BookingFailedScreen {
                   Navigator.of(context).pop();
                   Navigator.of(context).pop();
                 },
-                style: TextButton.styleFrom(foregroundColor: const Color(0xFF374151)),
+                style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFF374151)),
                 child: const Text('Back to Profile',
                     style: TextStyle(fontWeight: FontWeight.w700)),
               ),

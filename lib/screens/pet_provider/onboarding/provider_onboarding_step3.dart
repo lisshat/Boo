@@ -6,6 +6,8 @@ class ProviderOnboardingStep3 extends StatefulWidget {
   final String providerType;
   final String businessName;
   final String location;
+  final double? latitude;
+  final double? longitude;
   final String bio;
 
   const ProviderOnboardingStep3({
@@ -13,11 +15,14 @@ class ProviderOnboardingStep3 extends StatefulWidget {
     required this.providerType,
     required this.businessName,
     required this.location,
+    this.latitude,
+    this.longitude,
     required this.bio,
   });
 
   @override
-  State<ProviderOnboardingStep3> createState() => _ProviderOnboardingStep3State();
+  State<ProviderOnboardingStep3> createState() =>
+      _ProviderOnboardingStep3State();
 }
 
 class _ProviderOnboardingStep3State extends State<ProviderOnboardingStep3> {
@@ -31,8 +36,22 @@ class _ProviderOnboardingStep3State extends State<ProviderOnboardingStep3> {
   final _priceCtrl = TextEditingController();
   String _selectedPricingUnit = 'per_session';
 
-  static const _categories = ['Grooming', 'Wellness', 'Boarding', 'Training', 'Veterinary'];
-  static const _durations = ['30 min', '1 hour', '1.5 hours', '2 hours', '3 hours', '4 hours', 'Full day'];
+  static const _categories = [
+    'Grooming',
+    'Wellness',
+    'Boarding',
+    'Training',
+    'Veterinary'
+  ];
+  static const _durations = [
+    '30 min',
+    '1 hour',
+    '1.5 hours',
+    '2 hours',
+    '3 hours',
+    '4 hours',
+    'Full day'
+  ];
   static const _pricingUnits = [
     ('per_session', 'Per Session'),
     ('per_hour', 'Per Hour'),
@@ -85,6 +104,8 @@ class _ProviderOnboardingStep3State extends State<ProviderOnboardingStep3> {
           providerType: widget.providerType,
           businessName: widget.businessName,
           location: widget.location,
+          latitude: widget.latitude,
+          longitude: widget.longitude,
           bio: widget.bio,
           serviceCategory: _selectedCategory,
           serviceName: _serviceNameCtrl.text.trim(),
@@ -118,10 +139,12 @@ class _ProviderOnboardingStep3State extends State<ProviderOnboardingStep3> {
               const SizedBox(height: 8),
               const Text(
                 'No more negotiating prices over WhatsApp. Set it once, clients see it clearly.',
-                style: TextStyle(fontSize: 14, color: Colors.black54, height: 1.5),
+                style:
+                    TextStyle(fontSize: 14, color: Colors.black54, height: 1.5),
               ),
               const SizedBox(height: 28),
-              const Text('Category', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+              const Text('Category',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
               const SizedBox(height: 10),
               Wrap(
                 spacing: 8,
@@ -132,7 +155,8 @@ class _ProviderOnboardingStep3State extends State<ProviderOnboardingStep3> {
                     onTap: () => setState(() => _selectedCategory = cat),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 150),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 9),
                       decoration: BoxDecoration(
                         color: selected ? _orange : Colors.white,
                         borderRadius: BorderRadius.circular(20),
@@ -153,7 +177,8 @@ class _ProviderOnboardingStep3State extends State<ProviderOnboardingStep3> {
                 }).toList(),
               ),
               const SizedBox(height: 24),
-              const Text('Service name', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+              const Text('Service name',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
               const SizedBox(height: 8),
               TextField(
                 controller: _serviceNameCtrl,
@@ -163,7 +188,8 @@ class _ProviderOnboardingStep3State extends State<ProviderOnboardingStep3> {
                   hintStyle: const TextStyle(color: Colors.black38),
                   filled: true,
                   fillColor: Colors.white,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide.none,
@@ -171,7 +197,8 @@ class _ProviderOnboardingStep3State extends State<ProviderOnboardingStep3> {
                 ),
               ),
               const SizedBox(height: 20),
-              const Text('Duration', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+              const Text('Duration',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
               const SizedBox(height: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -194,7 +221,8 @@ class _ProviderOnboardingStep3State extends State<ProviderOnboardingStep3> {
                 ),
               ),
               const SizedBox(height: 20),
-              const Text('Pricing', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+              const Text('Pricing',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
               const SizedBox(height: 8),
               Row(
                 children: [
@@ -202,15 +230,18 @@ class _ProviderOnboardingStep3State extends State<ProviderOnboardingStep3> {
                     flex: 3,
                     child: TextField(
                       controller: _priceCtrl,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
                       decoration: InputDecoration(
                         hintText: '0.00',
                         hintStyle: const TextStyle(color: Colors.black38),
                         prefixText: 'KSh  ',
-                        prefixStyle: const TextStyle(color: Colors.black54, fontWeight: FontWeight.w500),
+                        prefixStyle: const TextStyle(
+                            color: Colors.black54, fontWeight: FontWeight.w500),
                         filled: true,
                         fillColor: Colors.white,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 14),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                           borderSide: BorderSide.none,
@@ -231,12 +262,17 @@ class _ProviderOnboardingStep3State extends State<ProviderOnboardingStep3> {
                         child: DropdownButton<String>(
                           value: _selectedPricingUnit,
                           isExpanded: true,
-                          icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 18),
+                          icon: const Icon(Icons.keyboard_arrow_down_rounded,
+                              size: 18),
                           items: _pricingUnits.map((u) {
-                            return DropdownMenuItem(value: u.$1, child: Text(u.$2, style: const TextStyle(fontSize: 13)));
+                            return DropdownMenuItem(
+                                value: u.$1,
+                                child: Text(u.$2,
+                                    style: const TextStyle(fontSize: 13)));
                           }).toList(),
                           onChanged: (val) {
-                            if (val != null) setState(() => _selectedPricingUnit = val);
+                            if (val != null)
+                              setState(() => _selectedPricingUnit = val);
                           },
                         ),
                       ),
@@ -306,7 +342,8 @@ class _ProviderTopBar extends StatelessWidget {
           child: const Icon(Icons.arrow_back_ios_new, size: 18),
         ),
         const SizedBox(width: 12),
-        const Text('Boo', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        const Text('Boo',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
       ],
     );
   }

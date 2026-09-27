@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
@@ -14,33 +15,49 @@ class _SplashScreenState extends State<SplashScreen>
   late final AnimationController _ctrl;
   late final Animation<double> _fadeIn;
   late final Animation<double> _slideUp;
+  final Stopwatch _duration = Stopwatch();
+  bool _routed = false;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 800));
+    _ctrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 800));
     _fadeIn = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut);
     _slideUp = Tween<double>(begin: 24, end: 0).animate(
       CurvedAnimation(parent: _ctrl, curve: Curves.easeOut),
     );
 
+    _duration.start();
+    _ctrl.addStatusListener(_handleAnimationStatus);
     _ctrl.forward();
+  }
 
-    Future.delayed(const Duration(milliseconds: 6000), () {
-      if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        PageRouteBuilder(
-          pageBuilder: (_, __, ___) => widget.next,
-          transitionsBuilder: (_, anim, __, child) =>
-              FadeTransition(opacity: anim, child: child),
-          transitionDuration: const Duration(milliseconds: 400),
-        ),
-      );
-    });
+  void _handleAnimationStatus(AnimationStatus status) {
+    if (status == AnimationStatus.completed) _routeToNext();
+  }
+
+  void _routeToNext() {
+    if (!mounted || _routed) return;
+    _routed = true;
+    if (kDebugMode) {
+      debugPrint(
+          '[auth timing] splash_route ${_duration.elapsedMilliseconds}ms');
+    }
+    Navigator.of(context).pushReplacement(
+      PageRouteBuilder(
+        pageBuilder: (_, __, ___) => widget.next,
+        transitionsBuilder: (_, anim, __, child) =>
+            FadeTransition(opacity: anim, child: child),
+        transitionDuration: const Duration(milliseconds: 400),
+      ),
+    );
   }
 
   @override
   void dispose() {
+    _ctrl.removeStatusListener(_handleAnimationStatus);
+    _duration.stop();
     _ctrl.dispose();
     super.dispose();
   }

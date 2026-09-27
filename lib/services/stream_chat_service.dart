@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:stream_chat_flutter/stream_chat_flutter.dart';
 
@@ -11,7 +14,7 @@ class BooStreamChatService {
 
   static const _apiKey = String.fromEnvironment(
     'STREAM_API_KEY',
-    defaultValue: '6jtwt7kbqtz2',
+    defaultValue: 'zv9s54g7xnv5',
   );
 
   StreamChatClient? _client;
@@ -19,6 +22,11 @@ class BooStreamChatService {
 
   bool get isConfigured => _apiKey.isNotEmpty;
   bool get isConnected => _client?.state.currentUser != null;
+
+  /// Returns the client only while a live user connection exists. UI surfaces
+  /// such as unread badges must not touch [client] while reconnecting or when
+  /// Stream is unavailable.
+  StreamChatClient? get connectedClient => isConnected ? _client : null;
   String? get currentUserId => _client?.state.currentUser?.id;
 
   StreamChatClient get client {
@@ -29,26 +37,14 @@ class BooStreamChatService {
     return activeClient;
   }
 
-  Future<Channel> directMessagingChannel({
-    required String otherUserId,
-    Map<String, Object?> extraData = const {},
+  Future<Channel> openAuthorizedChannel({
+    required String channelId,
+    String channelType = 'messaging',
   }) async {
-    final currentId = currentUserId;
-    if (currentId == null) {
-      throw StateError('Stream Chat user is not connected');
+    if (channelId.trim().isEmpty || channelType.trim().isEmpty) {
+      throw ArgumentError('The authorized chat channel is invalid.');
     }
-    if (otherUserId == currentId) {
-      throw StateError("You can't message your own profile.");
-    }
-
-    final members = [currentId, otherUserId]..sort();
-    final channel = client.channel(
-      'messaging',
-      extraData: {
-        ...extraData,
-        'members': members,
-      },
-    );
+    final channel = client.channel(channelType, id: channelId);
     await channel.watch();
     return channel;
   }
@@ -77,30 +73,58 @@ class BooStreamChatService {
     final inFlight = _connectFuture;
     if (inFlight != null) return inFlight;
 
-    final token = await _storage.read(key: 'stream_token');
-    final userId = await _storage.read(key: 'stream_user_id');
-    if (token == null || userId == null) return false;
-
-    _connectFuture = () async {
-      _client ??= StreamChatClient(_apiKey);
-      await _client!.connectUser(
-        User(
-          id: userId,
-          name: await _storage.read(key: 'stream_user_name'),
-          role: await _storage.read(key: 'user_role'),
-        ),
-        token,
-      );
-      return true;
-    }();
+    // Assign the shared future before any asynchronous storage read. The
+    // shell, notification bell and chat screen can all request connection at
+    // the same time; without this single-flight boundary they each call
+    // connectUser and Stream rejects the duplicates as "already available".
+    final future = _connectStoredSession();
+    _connectFuture = future;
     try {
-      return await _connectFuture!;
+      return await future;
     } catch (_) {
-      _client = null;
+      // A concurrent caller may have completed the connection successfully.
+      // Never clear that shared client because one waiter observed an error.
+      if (!isConnected) _client = null;
+      if (kDebugMode) {
+        debugPrint('[auth timing] stream_connect_failed');
+      }
       return false;
     } finally {
-      _connectFuture = null;
+      if (identical(_connectFuture, future)) _connectFuture = null;
     }
+  }
+
+  Future<bool> _connectStoredSession() async {
+    final stopwatch = Stopwatch()..start();
+    final token = await _storage.read(key: 'stream_token');
+    final userId = await _storage.read(key: 'stream_user_id');
+    if (token == null || token.isEmpty || userId == null || userId.isEmpty) {
+      return false;
+    }
+
+    final client = _client ??= StreamChatClient(_apiKey);
+    try {
+      await client
+          .connectUser(
+            User(
+              id: userId,
+              name: await _storage.read(key: 'stream_user_name'),
+              role: await _storage.read(key: 'user_role'),
+            ),
+            token,
+          )
+          .timeout(const Duration(seconds: 8));
+    } catch (_) {
+      // Stream can report an already-open connection when a previous caller
+      // completed just before this attempt observed the shared future. Treat
+      // that state as connected instead of converting it into an outage.
+      if (!isConnected) rethrow;
+    }
+    if (kDebugMode) {
+      debugPrint(
+          '[auth timing] stream_connect ${stopwatch.elapsedMilliseconds}ms');
+    }
+    return isConnected;
   }
 
   Future<void> disconnect() async {

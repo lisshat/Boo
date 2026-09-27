@@ -4,7 +4,8 @@ import 'package:flutter/material.dart';
 class RecommendedProviderCard extends StatelessWidget {
   final ProviderModel provider;
   final VoidCallback? onReturn;
-  const RecommendedProviderCard({super.key, required this.provider, this.onReturn});
+  const RecommendedProviderCard(
+      {super.key, required this.provider, this.onReturn});
 
   static Widget _imageFallback() => Container(
         height: 120,
