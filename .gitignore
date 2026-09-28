@@ -57,3 +57,5 @@ service-account*.json
 *-service-account.json
 *.dump
 *.dump.sql
+
+android/app/google-services.json
