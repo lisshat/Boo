@@ -123,27 +123,13 @@ npm run build
 
 Automated tests use fake adapters and do not make purchases, send emails, execute deployment SQL or call a live webhook. Emulator verification is manual and must be recorded separately from automated validation.
 
-## Demo checklist
+## Demo flow
 
-- [ ] Free owner sees the first-pet path and creates one pet.
-- [ ] A second pet shows the compact Boo Plus gate.
-- [ ] An annual Test Store purchase activates `boo_plus` for the owner.
-- [ ] The owner creates a second pet; the backend remains authoritative.
-- [ ] A free provider retains ordinary dashboard statistics.
-- [ ] Advanced earnings shows the compact Boo Pro gate.
-- [ ] An annual Test Store purchase activates `boo_pro` for the provider.
-- [ ] Advanced earnings displays truthful populated and empty states.
-- [ ] Logout and account switching clear local premium state.
-- [ ] Existing pets remain available after entitlement expiry.
-
-## Screenshot placeholders
-
-Approved screenshots can be added here without changing application behavior:
-
-- Owner free-tier and first-pet flow: `[screenshot placeholder]`
-- Boo Plus gate and active membership: `[screenshot placeholder]`
-- Provider free dashboard: `[screenshot placeholder]`
-- Boo Pro gate and advanced earnings: `[screenshot placeholder]`
+1. Sign in as a free owner, create the first pet, and open the add-pet action again to show the Boo Plus upgrade gate.
+2. Purchase Boo Plus in Test Store, return to the owner profile, and create an additional pet.
+3. Sign in as a free provider and show the ordinary dashboard statistics, which remain available without Boo Pro.
+4. Open Advanced earnings to show the Boo Pro gate, then purchase Boo Pro in Test Store and review the populated or empty earnings state.
+5. Log out and switch accounts to demonstrate that membership state is cleared and cannot carry across identities.
 
 ## License
 
